@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>架構分析報告</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  @page { size: A4; margin: 2cm 2.2cm 2cm 2.2cm; }
+
+  body {
+    font-family: 'Microsoft JhengHei', '微軟正黑體', 'Noto Sans TC', 'PingFang TC', sans-serif;
+    font-size: 11pt;
+    line-height: 1.65;
+    color: #1a1a1a;
+    background: #fff;
+  }
+
+  /* ── 封面 ── */
+  .cover {
+    height: 245mm;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    page-break-after: always;
+    break-after: page;
+  }
+  .cover .label  { font-size: 11pt; color: #555; margin-bottom: 6pt; letter-spacing: 1px; }
+  .cover .bar    { width: 70mm; height: 2px; background: #1a1a2e; margin: 18pt auto; }
+  .cover h1      { font-size: 20pt; font-weight: bold; color: #1a1a2e; line-height: 1.4; }
+  .cover h2      { font-size: 13pt; font-weight: normal; color: #555; margin-top: 6pt; margin-bottom: 18pt; }
+  .cover .meta   { font-size: 11pt; color: #333; line-height: 2.2; }
+
+  /* ── 章節標題 ── */
+  h2.sec {
+    font-size: 15pt;
+    font-weight: bold;
+    color: #1a1a2e;
+    border-left: 5px solid #1a1a2e;
+    padding-left: 9pt;
+    margin: 16pt 0 10pt;
+  }
+  h3 { font-size: 12pt; font-weight: bold; color: #2c3e50; margin: 12pt 0 6pt; }
+  h4 { font-size: 11pt; font-weight: bold; color: #34495e; margin: 8pt 0 4pt; }
+
+  p  { margin-bottom: 7pt; text-align: justify; }
+  ul, ol { padding-left: 18pt; margin-bottom: 7pt; }
+  li { margin-bottom: 3pt; }
+
+  /* ── 表格 ── */
+  table { width: 100%; border-collapse: collapse; margin: 8pt 0; font-size: 10.5pt; }
+  th    { background: #1a1a2e; color: #fff; padding: 5pt 8pt; text-align: left; font-weight: normal; }
+  td    { padding: 5pt 8pt; border-bottom: 1px solid #ddd; vertical-align: top; }
+  tr:nth-child(even) td { background: #f7f8fa; }
+
+  /* ── Code ── */
+  pre, code {
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 9.5pt;
+    background: #f4f5f7;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+  }
+  pre  { padding: 8pt; margin: 7pt 0; line-height: 1.45; white-space: pre; }
+  code { padding: 1pt 4pt; }
+
+  /* ── 換頁控制 ── */
+  .pb  { page-break-before: always; }
+  .nob { page-break-inside: avoid; }
+
+  /* ── 頁尾 ── */
+  .footer {
+    margin-top: 18pt;
+    text-align: center;
+    font-size: 9.5pt;
+    color: #aaa;
+    border-top: 1px solid #eee;
+    padding-top: 6pt;
+  }
+</style>
+</head>
+<body>
+
+<!-- ══ 封面 ══ -->
+<div class="cover">
+  <p class="label">雲端系統課程　分組專題 (2)　架構分析報告</p>
+  <div class="bar"></div>
+  <h1>分散式計算服務系統</h1>
+  <h2>商場購物搶購多代理人路徑規劃服務</h2>
+  <div class="bar"></div>
+  <div class="meta">
+    <p>繳交日期：2026 年 05 月 27 日</p>
+    <p>組員姓名：陳泓瑜</p>
+    <p>學　　號：B1229057</p>
+  </div>
+</div>
+
+<!-- ══ 壹：本系統架構說明 ══ -->
+<h2 class="sec">壹、本系統架構說明</h2>
+
+<h3>1.1　系統概述與目標</h3>
+<p>
+  本系統為一套以 Docker 容器化部署的分散式計算服務平台，提供商場購物搶購多代理人路徑規劃（Multi-Agent Pathfinding, MAPF）的計算服務。系統由一個 Web 版工作管理介面與三個計算節點共計四個 Docker Container 組成，以 Docker Compose 統一管理網路與啟動順序。使用者可透過 Web 介面設計商場地圖、設定顧客人數與購物清單，提交模擬任務後系統自動排程分派至空閒節點，完成後回傳 GIF 動畫呈現搶購過程。
+</p>
+
+<h3>1.2　整體架構與資料流</h3>
+<pre>
+┌──────────────────────────────────────────────────────┐
+│          Web 管理介面容器 (Container 1)               │
+│  Apache HTTP Server + Python mod_wsgi daemon mode    │
+│  前端 JS 輪詢（3s）│ Dispatcher（雙軌觸發+5s掃描）   │
+│  SQLite WAL：jobs / nodes 兩張資料表                 │
+│  對外暴露 port 8080                                  │
+└──────────────┬───────────────────────────────────────┘
+               │ HTTP Push（Docker 內部網路）
+       ┌───────┼───────┐
+       ▼       ▼       ▼
+  [node1]  [node2]  [node3]   ← Container 2 / 3 / 4
+  Flask + Gunicorn（2 workers）
+  MAPF 計算（subprocess）+ /status + heartbeat
+</pre>
+<p>
+  使用者提交任務 → SQLite 寫入（status=queued）→ Dispatcher HTTP POST 推送節點 → 節點背景計算 → 完成後 POST callback 回傳 GIF → 前端輪詢更新顯示。所有容器以 hostname 互相定址（<code>web / node1 / node2 / node3</code>）。
+</p>
+
+<h3>1.3　容器職責分工</h3>
+<table class="nob">
+  <tr><th>容器</th><th>技術</th><th>主要職責</th></tr>
+  <tr><td>Container 1（Web）</td><td>Apache + mod_wsgi + Python + SQLite</td><td>工作提交、佇列管理、分派邏輯、監控介面、資料持久化</td></tr>
+  <tr><td>Container 2/3/4（節點）</td><td>Python + Flask + Gunicorn</td><td>接收任務、執行 MAPF 計算、產出 GIF、回報資源與心跳</td></tr>
+</table>
+
+<!-- ══ 貳：技術選型 ══ -->
+<h2 class="sec pb">貳、技術選型與核心設計決策</h2>
+
+<h3>2.1　Apache + mod_wsgi Daemon Mode</h3>
+<p>
+  作業要求採用傳統 Apache HTTP Server。原生 CGI 模式每次請求啟動新程序，無法維護跨請求的狀態與背景執行緒。因此採用 <strong>mod_wsgi Daemon Mode</strong>：Python 以獨立程序池持續運行，Apache 代理請求至 WSGI 程序，WSGI 程序可自行啟動定期分派的 daemon thread，根本解決 CGI 的無狀態限制。
+</p>
+
+<h3>2.2　SQLite + WAL Mode</h3>
+<p>
+  四容器限制排除 Redis 等額外服務。mod_wsgi 多程序間無共享記憶體，須透過外部儲存維護共享狀態。選用 <strong>SQLite WAL（Write-Ahead Logging）Mode</strong>：WAL 允許多讀一寫並發，適合監控頁面頻繁讀取的存取模式；所有狀態轉換在 <code>BEGIN IMMEDIATE TRANSACTION</code> 內完成，確保原子性。UUID v4 作為 Job ID 防止工作總量洩露，並支援冪等提交。
+</p>
+
+<h3>2.3　Push 模式雙軌 Dispatcher</h3>
+<p>
+  工作分派採 <strong>Push 模式</strong>（管理端主動呼叫節點 API），管理端在分派當下記錄目標節點，直接滿足「標明正在哪個節點」的要求。Dispatcher 採雙軌觸發：<strong>事件觸發</strong>（工作提交 / callback 到達時立即分派）搭配<strong>背景掃描</strong>（每 5 秒執行週期性掃描，補救因 callback 失敗而滯留的工作）。節點每 10 秒發 Heartbeat，35 秒無回應則標記 offline，Circuit Breaker 阻止分派至失效節點。
+</p>
+
+<h3>2.4　計算節點：Flask + Gunicorn（2 Workers）</h3>
+<p>
+  節點以 <strong>Gunicorn 兩 worker</strong> 部署：一個執行長時間 MAPF 計算（subprocess.Popen 獨立程序，規避 Python GIL），一個回應 <code>/status</code> 與 Heartbeat，確保計算中節點仍可回報狀態。<code>/run</code> endpoint 收到請求立即回傳 202，計算完成後以指數退避（1s→2s→4s）重試 callback。
+</p>
+
+<!-- ══ 參：SLURM ══ -->
+<h2 class="sec pb">參、比較對象：SLURM 系統介紹</h2>
+
+<h3>3.1　系統概述</h3>
+<p>
+  SLURM（Simple Linux Utility for Resource Management）是目前全球 HPC 叢集中被廣泛採用的開源工作排程系統，由 Lawrence Livermore National Laboratory 開發，目前已在眾多學術機構與研究單位的高效能運算環境中部署。SLURM 核心功能與本系統高度相似：接受工作提交、維護佇列、分派至節點執行，並提供即時狀態與資源查詢。
+</p>
+
+<h3>3.2　SLURM 核心架構</h3>
+<pre>
+┌─────────────────────────────────────────────────────┐
+│  Login Node：sbatch job.sh / squeue / scancel       │
+└──────────────────────┬──────────────────────────────┘
+                       │ Munge 認證 + TCP
+┌──────────────────────▼──────────────────────────────┐
+│  Head Node：slurmctld（主控 daemon）                 │
+│  優先佇列 + Backfill 排程│資源追蹤（CPU/MEM/GPU）   │
+│  StateFile 持久化│Primary / Backup 雙控制節點容錯   │
+└──────────────────────┬──────────────────────────────┘
+                       │ 分派
+        ┌──────────────┼──────────────┐
+        ▼              ▼              ▼
+  [Compute Node 1] [Compute Node 2] [Compute Node N]
+  slurmd daemon    slurmd daemon    slurmd daemon
+  cgroups 資源隔離 + job steps 執行（每個節點相同）
+  ※ sacct / sinfo 等指令由使用者在 Login Node 執行
+</pre>
+<p>
+  <code>slurmctld</code> 集中管理所有排程決策；各節點的 <code>slurmd</code> 執行 job steps 並以 cgroups 在 OS 層面限制資源。使用者以 CLI 指令操作（<code>sbatch / squeue / scancel / sinfo</code>），功能集與本系統 REST API 直接對應。
+</p>
+
+<!-- ══ 肆：比較分析 ══ -->
+<h2 class="sec pb">肆、本系統與 SLURM 比較分析</h2>
+
+<h3>4.1　架構與部署</h3>
+<p>
+  兩系統皆採集中式「主從（Master-Worker）」架構。本系統以 Docker Compose 管理四容器，可在單台機器以單一指令完成部署，設定門檻低；SLURM 部署於多台實體或虛擬機叢集，需設定 <code>slurm.conf</code>、Munge、網路路由等，部署程序較為複雜，但支援大規模節點擴展。通訊安全上，SLURM 以 Munge HMAC 認證所有 daemon 訊息；本系統以純 HTTP 於 Docker 內部網路通訊，適合受控環境。
+</p>
+
+<h3>4.2　排程策略與資源管理</h3>
+<p>
+  本系統採 Round-Robin 輪詢配合「每節點同時最多一工作」策略，邏輯清晰，便於展示佇列行為。SLURM 實作多佇列優先排程（FIFO / Backfill 插件），可依 CPU 核心、記憶體量、GPU 數、時間限制細粒度分配資源，並支援工作搶占（Preemption）。資源監控方面，本系統輪詢節點 <code>/status</code> endpoint 解析 <code>top</code> 輸出；SLURM 透過 cgroups 精確計帳，完成後可輸出詳細資源使用報表（<code>sacct</code>）。
+</p>
+
+<h3>4.3　容錯與高可用性</h3>
+<p>
+  本系統以 Heartbeat + Circuit Breaker 偵測節點失效，失效節點工作透過背景掃描重排（最多重試 3 次）。然而 Web 容器本身為單點失效點（SPOF），容器故障則服務中斷。SLURM 的 Primary/Backup <code>slurmctld</code> 架構中，Backup 節點可在短時間內完成控制權移交，並從 StateFile 完整恢復工作狀態，降低了管理端的單點風險。
+</p>
+
+<h3>4.4　綜合比較表</h3>
+<table class="nob">
+  <tr><th>比較維度</th><th>本系統</th><th>SLURM</th></tr>
+  <tr><td>架構模式</td><td>集中式 manager + HTTP push</td><td>集中式 slurmctld + slurmd daemon</td></tr>
+  <tr><td>部署方式</td><td>Docker Compose（單機可執行）</td><td>實體 / 虛擬機叢集</td></tr>
+  <tr><td>狀態持久化</td><td>SQLite WAL（volume 掛載）</td><td>StateFile + checkpoint</td></tr>
+  <tr><td>排程策略</td><td>Round-Robin，1 job / node</td><td>多佇列 FIFO / Backfill</td></tr>
+  <tr><td>資源分配粒度</td><td>節點層級</td><td>CPU 核心 / 記憶體 MB / GPU</td></tr>
+  <tr><td>節點健康偵測</td><td>Heartbeat（10s）+ Circuit Breaker</td><td>slurmd 心跳 + NodeHealthCheck</td></tr>
+  <tr><td>管理端容錯</td><td>無（SPOF）</td><td>Primary / Backup slurmctld</td></tr>
+  <tr><td>使用者介面</td><td>Web UI + REST API</td><td>CLI（sbatch/squeue）+ REST API</td></tr>
+  <tr><td>通訊安全</td><td>純 HTTP（Docker 內部）</td><td>Munge 認證 + 可配置 TLS</td></tr>
+  <tr><td>擴展性</td><td>手動修改 Compose 檔</td><td>動態加入節點，支援大規模叢集</td></tr>
+  <tr><td>部署複雜度</td><td>低（單一指令啟動）</td><td>高（需 OS 層設定）</td></tr>
+  <tr><td>適用規模</td><td>小型（&lt;10 節點，教學）</td><td>大型 HPC 叢集</td></tr>
+</table>
+
+<!-- ══ 伍：優缺點 ══ -->
+<h2 class="sec pb">伍、本系統優缺點分析</h2>
+
+<h3>5.1　優點</h3>
+<table class="nob">
+  <tr><th>優點</th><th>說明</th></tr>
+  <tr><td>容器化部署，環境可重現</td><td>以 docker compose up 單一指令啟動全系統，依賴封裝於映像檔，消除環境差異問題</td></tr>
+  <tr><td>工作狀態視覺化</td><td>Web 介面清晰呈現三種工作狀態，執行中工作標示所在節點，完成工作提供 GIF 動畫預覽</td></tr>
+  <tr><td>業界標準設計模式</td><td>雙軌 Dispatcher、Heartbeat + Circuit Breaker、指數退避重試等模式與生產系統設計一致，具教育意義</td></tr>
+  <tr><td>計算任務具真實應用背景</td><td>MAPF 對應 Amazon Robotics 等倉儲機器人場景，計算量充分（15–35 秒），輸出 GIF 動畫易於呈現結果</td></tr>
+</table>
+
+<h3>5.2　缺點與限制</h3>
+<table class="nob">
+  <tr><th>缺點</th><th>說明</th><th>改善方向</th></tr>
+  <tr><td>管理節點 SPOF</td><td>Web 容器故障則服務全停，狀態有遺失風險</td><td>引入資料庫主從複寫或 Leader Election</td></tr>
+  <tr><td>排程缺乏資源感知</td><td>Round-Robin 不考慮節點當前負載，可能分派至高負載節點</td><td>查詢 /status，採 Least-Loaded First</td></tr>
+  <tr><td>內部通訊未加密</td><td>純 HTTP 無身份驗證，不適合對外開放的生產環境</td><td>引入 JWT token 或 mTLS</td></tr>
+  <tr><td>前端輪詢有延遲</td><td>3 秒輪詢間隔導致狀態更新最多延遲 3 秒，產生固定背景流量</td><td>改用 WebSocket 或 SSE 即時推送</td></tr>
+</table>
+
+<!-- ══ 陸：結論 ══ -->
+<h2 class="sec">陸、結論</h2>
+<p>
+  本系統與 SLURM 在核心功能定位上高度一致：工作提交、佇列排程、節點分派與狀態監控均有對應實作。主要差距在於系統規模與容錯能力——本系統以最低基礎設施成本實現分散式計算服務的核心概念，SLURM 則以多年工程積累與持續演進應對大規模 HPC 的生產需求。
+</p>
+<p>就適用情境而言：</p>
+<ul>
+  <li><strong>本系統適合</strong>：教學環境中模擬分散式排程行為，以及節點數少於 10 個、不需高可用性的小型計算服務</li>
+  <li><strong>SLURM 適合</strong>：大學 / 研究機構的 HPC 資源共享平台，以及任何需要細粒度資源管理、多用戶公平排程與高可用性保障的生產環境</li>
+</ul>
+<p>
+  本專題透過設計並實作這套系統，深入實踐了工作佇列、節點健康偵測、多程序並發與容器化部署等分散式系統核心概念。與 SLURM 的比較揭示了從教學原型到生產系統的工程距離，亦為後續系統強化提供了清晰的改進方向。
+</p>
+
+<div class="footer">
+  雲端系統課程　分組專題 (2)　架構分析報告　2026 年 05 月 27 日
+</div>
+
+</body>
+</html>

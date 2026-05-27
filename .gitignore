@@ -1,0 +1,30 @@
+# 資料庫與輸出檔案
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# 環境變數（含機密資訊）
+.env
+
+# Python 快取
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# 虛擬環境
+venv/
+.venv/
+env/
+
+# 系統檔案
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp

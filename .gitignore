@@ -1,11 +1,9 @@
-# 資料庫與輸出檔案
-data/
+# 資料庫與輸出檔案（data/ 目錄本身保留，內容忽略）
+data/*
+!data/.gitkeep
 *.db
 *.db-shm
 *.db-wal
-
-# 環境變數（含機密資訊）
-.env
 
 # Python 快取
 __pycache__/

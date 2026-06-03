@@ -93,18 +93,34 @@ CloudSystem_final_Project/
 - [x] `node/Dockerfile`：python:3.11-slim + procps + gunicorn
 - [x] `node/node_app.py`：`GET /status`（top 解析），`POST /run`（stub 回 501）
 
-#### 驗證指令
+#### 驗證結果　✅ 已驗證
 
-```bash
-docker compose up --build
-docker exec web python3 -c "
-import sqlite3; c=sqlite3.connect('/data/jobs.db')
-print([r[0] for r in c.execute(\"SELECT name FROM sqlite_master WHERE type='table'\")])
-"
+```powershell
+# 啟動（日後標準指令）
+docker compose up --build -d
+
+# 確認容器狀態
+docker ps   # → web、node1/2/3 均 Up
+
+# 確認 DB schema（PowerShell 用 here-string 避免引號衝突）
+@'
+import sqlite3
+c = sqlite3.connect('/data/jobs.db')
+print([r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")])
+'@ | docker exec -i web python3
 # → ['jobs', 'nodes']
 
+# 確認 web API
 curl http://localhost:8080/api
 # → {"success": true, "data": "web service running", "error": null}
+
+# 確認 node /status（從 web container 內呼叫）
+docker exec web curl -s http://node1:5000/status
+# → {"success":true,"data":{"node_id":"node1","status":"idle","cpu_percent":...}}
+```
+
+> **注意：** 若出現容器名稱衝突，先執行 `docker compose down` 再 `docker rm -f node1 node2 node3 web`，然後重新 `docker compose up --build -d`。
+
 
 curl http://localhost:8080
 # → 佔位前端頁面

@@ -11,8 +11,9 @@ const GRID_LINE  = '#d4d4d4';
 let grid      = mkGrid();
 let tool      = WALL;
 let drawing   = false;
-let lastCell  = null;
-let _jobs     = [];   // cached for modal
+let lastCell       = null;
+let _jobs          = [];   // cached for modal
+let currentPreset  = 1;
 
 // ─── Canvas setup ──────────────────────────────────────────────────────────────
 const canvas = document.getElementById('grid-canvas');
@@ -88,34 +89,87 @@ function clearGrid() {
   syncSubmitInfo();
 }
 
-function generatePreset() {
-  grid = mkGrid();
+// ─── Map preset generators ─────────────────────────────────────────────────────
 
-  // Outer walls
+function _walls() {
   for (let c = 0; c < COLS; c++) { grid[0][c] = WALL; grid[ROWS-1][c] = WALL; }
   for (let r = 0; r < ROWS; r++) { grid[r][0] = WALL; grid[r][COLS-1] = WALL; }
+}
 
-  // Shelf pairs: 2×2 blocks at fixed row/col anchors
-  const shelfRows = [4, 11, 18, 25, 32, 39, 46];
-  const shelfCols = [3, 8, 13, 18, 23, 28, 33, 38, 43, 48, 53];
-  for (const sr of shelfRows) {
-    for (const sc of shelfCols) {
-      for (let dr = 0; dr < 2; dr++) {
-        for (let dc = 0; dc < 2; dc++) {
-          const r = sr + dr, c = sc + dc;
-          if (r < ROWS-1 && c < COLS-1) grid[r][c] = SHELF;
-        }
-      }
+function _block(sr, sc, h, w) {
+  for (let dr = 0; dr < h; dr++)
+    for (let dc = 0; dc < w; dc++) {
+      const r = sr+dr, c = sc+dc;
+      if (r > 0 && r < ROWS-1 && c > 0 && c < COLS-1) grid[r][c] = SHELF;
+    }
+}
+
+// 小超市: 3 排貨架, 2×2 格, 寬走道, 少顧客
+function genSmall() {
+  grid = mkGrid(); _walls();
+  for (const sr of [7, 16, 25])
+    for (let sc = 4; sc <= 53; sc += 7) _block(sr, sc, 2, 2);
+  // 收銀台單排, row 42
+  for (let c = 4; c <= 53; c += 7)
+    if (c+1 < COLS-1) { grid[42][c] = CASHIER; grid[42][c+1] = CASHIER; }
+  redraw(); syncSubmitInfo();
+}
+
+// 中型商場: 7 排貨架, 2×2 格, 密度適中
+function genMedium() {
+  grid = mkGrid(); _walls();
+  for (const sr of [4, 11, 18, 25, 32, 39, 46])
+    for (const sc of [3, 8, 13, 18, 23, 28, 33, 38, 43, 48, 53]) _block(sr, sc, 2, 2);
+  // 收銀台, row 53
+  for (let c = 3; c <= 55; c += 5)
+    if (c+1 < COLS-1) { grid[53][c] = CASHIER; grid[53][c+1] = CASHIER; }
+  redraw(); syncSubmitInfo();
+}
+
+// 大型賣場: 兩翼佈局, 3 寬貨架, 中央主走道, 雙排收銀台
+function genLarge() {
+  grid = mkGrid(); _walls();
+  // 左翼 cols 2-24 (6 組, 每組 3 寬, 間距 1)
+  // 右翼 cols 34-56 (6 組, 每組 3 寬, 間距 1)
+  // 中央走道 cols 25-33 (9 格)
+  for (const sr of [3, 8, 13, 18, 23, 28, 33, 38, 43]) {
+    for (const sc of [2, 6, 10, 14, 18, 22])    _block(sr, sc, 2, 3);
+    for (const sc of [34, 38, 42, 46, 50, 54])  _block(sr, sc, 2, 3);
+  }
+  // 雙排收銀台 rows 51-52
+  for (let c = 2; c <= 57; c += 4) {
+    if (c+1 < COLS-1) {
+      grid[51][c] = CASHIER; grid[51][c+1] = CASHIER;
+      grid[52][c] = CASHIER; grid[52][c+1] = CASHIER;
     }
   }
+  redraw(); syncSubmitInfo();
+}
 
-  // Cashier row at row 53
-  for (let c = 3; c <= COLS-4; c += 5) {
-    if (c+1 <= COLS-2) { grid[53][c] = CASHIER; grid[53][c+1] = CASHIER; }
-  }
+// ─── Preset definitions ────────────────────────────────────────────────────────
+const PRESETS = [
+  { name: '小超市',   params: { agents: 10, listSize: 3, maxSteps: 150, seed: 42 }, gen: genSmall  },
+  { name: '中型商場', params: { agents: 20, listSize: 4, maxSteps: 200, seed: 42 }, gen: genMedium },
+  { name: '大型賣場', params: { agents: 35, listSize: 5, maxSteps: 300, seed: 99 }, gen: genLarge  },
+];
 
-  redraw();
-  syncSubmitInfo();
+function selectPreset(i) {
+  currentPreset = i;
+  document.querySelectorAll('.preset-btn').forEach((b, j) => b.classList.toggle('active', j === i));
+  PRESETS[i].gen();
+  applyParams(PRESETS[i].params);
+}
+
+function applyParams(p) {
+  document.getElementById('f-agents').value   = p.agents;
+  document.getElementById('f-listsize').value = p.listSize;
+  document.getElementById('f-maxsteps').value = p.maxSteps;
+  document.getElementById('f-seed').value     = p.seed;
+}
+
+function resetParams() {
+  applyParams(PRESETS[currentPreset].params);
+  toast(`已重置為「${PRESETS[currentPreset].name}」預設值`, '');
 }
 
 function countType(t) {
@@ -352,7 +406,6 @@ function esc(s) {
 }
 
 // ─── Init ──────────────────────────────────────────────────────────────────────
-redraw();
-syncSubmitInfo();
+selectPreset(1);   // 預設載入中型商場
 poll();
 setInterval(poll, 3000);

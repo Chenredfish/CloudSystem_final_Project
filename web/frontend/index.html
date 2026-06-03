@@ -128,6 +128,43 @@
     .act-btn.ghost { background: #f1f5f9; color: #475569; }
     .act-btn.ghost:hover { background: #e2e8f0; }
 
+    /* Preset selector */
+    .preset-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      flex-wrap: wrap;
+    }
+    .preset-bar-lbl {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: #94a3b8;
+      white-space: nowrap;
+      margin-right: 2px;
+    }
+    .preset-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      padding: 7px 14px;
+      border: 2px solid #e2e8f0;
+      border-radius: 6px;
+      background: #fff;
+      cursor: pointer;
+      transition: border-color .12s, background .12s;
+      text-align: left;
+    }
+    .preset-btn:hover { border-color: #94a3b8; background: #f8fafc; }
+    .preset-btn.active { border-color: #2563eb; background: #eff6ff; }
+    .preset-btn .pname {
+      font-size: 13px; font-weight: 700; color: #1e293b; line-height: 1.3;
+    }
+    .preset-btn.active .pname { color: #2563eb; }
+    .preset-btn .pdesc { font-size: 10px; color: #94a3b8; margin-top: 1px; }
+
     /* Canvas */
     .canvas-wrap { line-height: 0; }
     #grid-canvas {
@@ -362,6 +399,23 @@
   <!-- ── LEFT: map editor ── -->
   <div class="editor-col">
 
+    <!-- Preset selector -->
+    <div class="preset-bar panel">
+      <span class="preset-bar-lbl">方案</span>
+      <button class="preset-btn" id="pb-0" onclick="selectPreset(0)">
+        <span class="pname">小超市</span>
+        <span class="pdesc">10 人 · 3 件 · 150 步</span>
+      </button>
+      <button class="preset-btn active" id="pb-1" onclick="selectPreset(1)">
+        <span class="pname">中型商場</span>
+        <span class="pdesc">20 人 · 4 件 · 200 步</span>
+      </button>
+      <button class="preset-btn" id="pb-2" onclick="selectPreset(2)">
+        <span class="pname">大型賣場</span>
+        <span class="pdesc">35 人 · 5 件 · 300 步</span>
+      </button>
+    </div>
+
     <!-- Toolbar -->
     <div class="toolbar">
       <button class="tool-btn active" data-tool="1" onclick="selectTool(1,this)">■ 牆壁</button>
@@ -376,7 +430,6 @@
         <div class="leg-item"><div class="leg-swatch" style="background:#22c55e"></div>收銀台</div>
       </div>
       <div class="vsep"></div>
-      <button class="act-btn ghost" onclick="generatePreset()">生成範例地圖</button>
       <button class="act-btn ghost" onclick="clearGrid()">清除全部</button>
     </div>
 
@@ -403,6 +456,7 @@
         <label>隨機種子</label>
         <input type="number" id="f-seed"     value="42"  min="0">
       </div>
+      <button class="act-btn ghost" onclick="resetParams()" title="重置為目前方案的預設值">↺ 重置參數</button>
       <button class="btn-primary" id="submit-btn" onclick="submitJob()">提交任務</button>
       <span id="submit-info"></span>
     </div>

@@ -10,7 +10,7 @@
 | Phase | 內容 | 狀態 |
 |-------|------|------|
 | 1 | 基礎設施（Docker、SQLite、容器骨架） | ✅ 完成 |
-| 2 | 計算節點（/run、Heartbeat、compute.py stub） | 🔲 待實作 |
+| 2 | 計算節點（/run、Heartbeat、compute.py stub） | ✅ 完成 |
 | 3 | Web 後端 API（全部 endpoint、Dispatcher） | 🔲 待實作 |
 | 4 | MAPF 計算引擎（PBS、GIF 產出） | 🔲 待實作 |
 | 5 | 前端（Canvas 編輯器、輪詢顯示） | 🔲 待實作 |
@@ -128,40 +128,54 @@ curl http://localhost:8080
 
 ---
 
-### Phase 2　計算節點 Flask 服務
+### Phase 2　計算節點 Flask 服務　✅ 完成
 
 **目標：** 節點可以接收工作、背景執行假計算、定期回報心跳。
 
 #### 2-1　node_app.py — POST /run
 
-- [ ] 驗證必填欄位（`job_id`、`map_grid`、`products`、`num_agents`、`seed`）
-- [ ] 設定 `_current_job_id`（執行緒安全）
-- [ ] `subprocess.Popen(['python3', 'mapf/compute.py', job_json])` 啟動背景計算
-- [ ] 立即回傳 HTTP 202 + `{"success": true}`
+- [x] 驗證必填欄位（`job_id`、`map_grid`、`products`、`num_agents`、`seed`）
+- [x] 執行緒安全 job 狀態（`_job_lock` + `_current_job` dict）
+- [x] `subprocess.Popen(['python3', 'mapf/compute.py', job_json])` 啟動背景計算
+- [x] monitor thread 等待 process 結束後清除狀態
+- [x] 立即回傳 HTTP 202 + `{"success": true}`；busy 時回傳 409
 
 > `/status` 已於 Phase 1 完成（top 解析、回傳 CPU/MEM/current_job_id）
 
 #### 2-2　Heartbeat background thread
 
-- [ ] `threading.Thread(target=_heartbeat_loop, daemon=True).start()` 在 app 啟動時執行
-- [ ] 每 10 秒：`POST {WEB_CALLBACK_URL}/api/nodes/{NODE_ID}/heartbeat`，body 含 `status`、`current_job_id`
-- [ ] 使用 `try/except` 忽略網路錯誤（web container 可能尚未就緒）
+- [x] `os.register_at_fork(after_in_child=_start_heartbeat)` + 模組層啟動（相容 Gunicorn fork）
+- [x] 每 10 秒：`POST {WEB_CALLBACK_URL}/api/nodes/{NODE_ID}/heartbeat`，body 含 `status`、`current_job_id`
+- [x] `try/except` 忽略網路錯誤（Phase 3 完成前 web endpoint 尚不存在）
 
 #### 2-3　mapf/compute.py（暫時版）
 
-- [ ] `sys.argv[1]` 讀取 job JSON 字串
-- [ ] `time.sleep(15)` 模擬計算
-- [ ] 產生純色假 GIF（用 Pillow，只需一幀）
-- [ ] 回呼：`POST {WEB_CALLBACK_URL}/api/jobs/{job_id}/complete`（multipart，帶 GIF）
-- [ ] 指數退避重試：1s → 2s → 4s（三次失敗則放棄）
+- [x] `sys.argv[1]` 讀取 job JSON 字串
+- [x] `time.sleep(15)` 模擬計算
+- [x] 產生純色假 GIF（Pillow，單幀 200×200）
+- [x] 回呼：`POST {WEB_CALLBACK_URL}/api/jobs/{job_id}/complete`（multipart，帶 GIF）
+- [x] 指數退避重試：1s → 2s → 4s（三次失敗則放棄）
 
-#### 驗證指令
+#### 驗證結果　✅ 已驗證
 
-```bash
-# 需先完成 Phase 3 才能做 end-to-end 測試
-# 但可單獨驗證 /status：
-curl http://localhost:8080       # 前端佔位（Phase 1）
-# node 的 /status 在 Docker 內部，由 Phase 3 完成後透過 web 觸發
+```powershell
+# 送出假工作
+docker exec web curl -s -X POST http://node1:5000/run \
+  -H "Content-Type: application/json" \
+  -d '{"job_id":"test-001","map_grid":"10x10","products":"[]","num_agents":2,"seed":42}'
+# → {"success":true,"data":{"job_id":"test-001"},...}  HTTP 202
+
+# 確認 busy 狀態
+docker exec web curl -s http://node1:5000/status
+# → {"data":{"current_job_id":"test-001","status":"busy",...}}
+
+# 確認拒絕重複派工
+docker exec web curl -s -X POST http://node1:5000/run ...
+# → {"error":{"code":"NODE_BUSY",...},"success":false}  HTTP 409
+
+# 15 秒後確認自動回到 idle
+docker exec web curl -s http://node1:5000/status
+# → {"data":{"current_job_id":null,"status":"idle",...}}
 ```
 
 ---

@@ -13,7 +13,7 @@
 | 2 | 計算節點（/run、Heartbeat、compute.py stub） | ✅ 完成 |
 | 3 | Web 後端 API（全部 endpoint、Dispatcher） | ✅ 完成 |
 | 4 | MAPF 計算引擎（PBS、GIF 產出） | 🔲 待實作 |
-| 5 | 前端（Canvas 編輯器、輪詢顯示） | 🔲 待實作 |
+| 5 | 前端（Canvas 編輯器、輪詢顯示） | ✅ 完成 |
 | 6 | 整合測試 | 🔲 待實作 |
 
 ---
@@ -324,47 +324,57 @@ docker exec node1 python3 mapf/compute.py '{"job_id":"test","map_grid":[...],...
 
 ---
 
-### Phase 5　前端
+### Phase 5　前端　✅ 完成
 
 **目標：** 使用者可在瀏覽器設計地圖、提交工作、監看進度、查看 GIF。
 
 #### 5-1　index.html 版面（三區塊）
 
-- [ ] 商場編輯區（Canvas + 工具列 + 參數輸入）
-- [ ] 節點狀態區（三欄：node1/2/3，各顯示 CPU/MEM/狀態）
-- [ ] 工作列表區（表格：ID、顧客數、狀態、節點、耗時、操作、GIF 縮圖）
+- [x] 方案選擇列（小超市 / 中型商場 / 大型賣場，含各自預設參數）
+- [x] 商場編輯區（Canvas + 工具列 + 參數輸入）
+- [x] 節點狀態區（node1/2/3，各顯示 idle/busy/offline 狀態與心跳時間）
+- [x] 工作列表區（表格：ID、狀態、提交時間、節點、耗時、操作）
 
 #### 5-2　app.js 商場 Canvas 編輯器
 
-- [ ] 60×60 格子，依螢幕大小縮放
-- [ ] 工具列：畫牆 / 畫貨架 / 放收銀台 / 清除；拖曳批次繪製
-- [ ] 點擊貨架格 → 輸入商品名稱與庫存數量
-- [ ] 「送出」按鈕：序列化 `map_grid`、`products` → `POST /api/jobs`
+- [x] 60×60 格子（每格 9px，共 540×540 px）
+- [x] 工具列：畫牆 / 畫貨架 / 放收銀台 / 清除；拖曳批次繪製，右鍵直接清除
+- [x] 貨架自動產生 `products` dict（每格 stock=3，商品名 A/B/C…）
+- [x] 「送出」按鈕：序列化 `map_grid`、`products` → `POST /api/jobs`
+- [x] `↺ 重置參數` 按鈕：還原目前方案的預設值
 
-#### 5-3　app.js 輪詢更新
+#### 5-3　三組預設方案
 
-```javascript
-async function poll() {
-    const [jobs, nodes] = await Promise.all([
-        fetch('/api/jobs').then(r => r.json()),
-        fetch('/api/nodes').then(r => r.json()),
-    ])
-    renderJobTable(jobs.data)
-    renderNodeStatus(nodes.data)
-}
-setInterval(poll, 3000)
-```
+| 方案 | 地圖特徵 | 顧客 | 清單 | 步數 | 種子 |
+|------|---------|------|------|------|------|
+| 小超市 | 3 排 × 8 組 2×2 貨架，寬走道，單排收銀台 | 10 | 3 | 150 | 42 |
+| 中型商場（預設） | 7 排 × 11 組 2×2 貨架，平衡密度 | 20 | 4 | 200 | 42 |
+| 大型賣場 | 兩翼各 6 組 3 寬貨架，9 格中央走道，雙排收銀台 | 35 | 5 | 300 | 99 |
 
-- [ ] 工作狀態顏色徽章（排隊中 / 執行中 / 完成 / 失敗 / 取消）
-- [ ] 執行中顯示 `node_id`
-- [ ] 完成工作：GIF 縮圖，點擊展開放大
-- [ ] 排隊中工作：「取消」按鈕 → `DELETE /api/jobs/<id>`
+#### 5-4　app.js 輪詢更新
 
-#### 驗證
+- [x] `Promise.all([GET /api/jobs, GET /api/nodes])` 每 3 秒執行
+- [x] 工作狀態顏色徽章（排隊中 / 執行中 / 完成 / 失敗 / 取消）
+- [x] 執行中顯示 `node_id`
+- [x] 完成工作：「查看動畫」開啟 Modal，顯示 GIF + stats（makespan、sum_of_costs 等）
+- [x] 排隊中工作：「取消」按鈕 → `DELETE /api/jobs/<id>`
+- [x] Toast 通知（提交成功 / 取消結果 / 錯誤訊息）
 
-```bash
-# 在瀏覽器開啟 http://localhost:8080
-# 設計地圖 → 送出 → 等待 → GIF 出現
+#### 驗證結果　✅ 已驗證
+
+```powershell
+# 前端首頁 HTTP 200
+(Invoke-WebRequest -Uri "http://localhost:8080/" -UseBasicParsing).StatusCode   # → 200
+(Invoke-WebRequest -Uri "http://localhost:8080/app.js" -UseBasicParsing).StatusCode  # → 200
+
+# 提交工作（模擬前端 payload）
+$r = Invoke-WebRequest -Uri "http://localhost:8080/api/jobs" -Method POST `
+     -ContentType "application/json" -Body $body -UseBasicParsing
+# → {"success":true,"data":{"job_id":"..."},...}
+
+# 15 秒後查詢，status=done，GIF 可取得
+(Invoke-WebRequest -Uri "http://localhost:8080/api/jobs/<id>/image").Headers['Content-Type']
+# → image/gif
 ```
 
 ---
@@ -444,4 +454,4 @@ except Exception:
 
 ---
 
-*最後更新：Phase 3 完成（2026-06-03）*
+*最後更新：Phase 5 完成（2026-06-03）*

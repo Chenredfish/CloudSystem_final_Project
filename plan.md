@@ -11,7 +11,7 @@
 |-------|------|------|
 | 1 | 基礎設施（Docker、SQLite、容器骨架） | ✅ 完成 |
 | 2 | 計算節點（/run、Heartbeat、compute.py stub） | ✅ 完成 |
-| 3 | Web 後端 API（全部 endpoint、Dispatcher） | 🔲 待實作 |
+| 3 | Web 後端 API（全部 endpoint、Dispatcher） | ✅ 完成 |
 | 4 | MAPF 計算引擎（PBS、GIF 產出） | 🔲 待實作 |
 | 5 | 前端（Canvas 編輯器、輪詢顯示） | 🔲 待實作 |
 | 6 | 整合測試 | 🔲 待實作 |
@@ -180,21 +180,21 @@ docker exec web curl -s http://node1:5000/status
 
 ---
 
-### Phase 3　Web 後端 API
+### Phase 3　Web 後端 API　✅ 完成
 
 **目標：** 所有 REST API endpoint 正常運作，Dispatcher 可以分派工作。
 
 #### 3-1　db.py CRUD 函式
 
-- [ ] `create_job(id, map_grid, products, ...)` → INSERT
-- [ ] `get_all_jobs()` → SELECT 全部，JSON 欄位反序列化
-- [ ] `get_job(id)` → SELECT WHERE id
-- [ ] `update_job_status(id, status, node_id=None, dispatched_at=None)`
-- [ ] `cancel_job(id)` → 僅當 `status='queued'` 才更新為 `cancelled`，否則回傳 False
-- [ ] `save_job_result(id, gif_path, stats, elapsed_sec)` → UPDATE
-- [ ] `upsert_node(node_id, status, current_job_id, last_heartbeat)`
-- [ ] `get_all_nodes()` → SELECT 全部
-- [ ] `get_idle_nodes()` → SELECT WHERE status='idle'
+- [x] `create_job(id, map_grid, products, ...)` → INSERT
+- [x] `get_all_jobs()` → SELECT 全部，JSON 欄位反序列化
+- [x] `get_job(id)` → SELECT WHERE id
+- [x] `update_job_status(id, status, node_id=None, dispatched_at=None)`
+- [x] `cancel_job(id)` → 僅當 `status='queued'` 才更新為 `cancelled`，否則回傳 False
+- [x] `save_job_result(id, gif_path, stats, elapsed_sec)` → UPDATE
+- [x] `upsert_node(node_id, status, current_job_id, last_heartbeat)`
+- [x] `get_all_nodes()` → SELECT 全部
+- [x] `get_idle_nodes()` → SELECT WHERE status='idle'
 
 #### 3-2　wsgi.py 路由
 
@@ -207,9 +207,9 @@ docker exec web curl -s http://node1:5000/status
 # /nodes/<id>/... → routes/nodes.py
 ```
 
-- [ ] 解析 `PATH_INFO`、`REQUEST_METHOD`，路由到對應 handler
-- [ ] 統一回傳格式：`{"success": bool, "data": ..., "error": {"code":..., "message":...}}`
-- [ ] 啟動 dispatcher background thread（`threading.Thread(daemon=True)`）
+- [x] 解析 `PATH_INFO`、`REQUEST_METHOD`，路由到對應 handler
+- [x] 統一回傳格式：`{"success": bool, "data": ..., "error": {"code":..., "message":...}}`
+- [x] 啟動 dispatcher background thread（`threading.Thread(daemon=True)`）
 
 #### 3-3　routes/jobs.py
 
@@ -223,48 +223,48 @@ docker exec web curl -s http://node1:5000/status
 
 #### 3-4　routes/nodes.py
 
-- [ ] `GET /api/nodes`：`get_all_nodes()` → 回傳陣列
-- [ ] `POST /api/nodes/<id>/heartbeat`：`upsert_node()` 更新 `last_heartbeat = time.time()`、`consecutive_miss = 0`
+- [x] `GET /api/nodes`：`get_all_nodes()` → 回傳陣列
+- [x] `POST /api/nodes/<id>/heartbeat`：`upsert_node()` 更新 `last_heartbeat = time.time()`、`consecutive_miss = 0`
 
 #### 3-5　dispatcher.py
 
-```python
-def try_dispatch():
-    # BEGIN IMMEDIATE TRANSACTION
-    # 取 queued job（oldest first）+ idle node
-    # UPDATE job → running、UPDATE node → busy
-    # COMMIT
-    # HTTP POST node /run（帶完整 job 參數 JSON）
-    # 若 HTTP 失敗：UPDATE job → queued, retry_count+1
-    #   retry_count >= MAX_RETRY → failed
+- [x] `try_dispatch()` 實作（含 BEGIN IMMEDIATE）
+- [x] `background_scanner()` daemon thread
+- [x] `try_dispatch()` 在 `POST /api/jobs` 與 `POST /api/jobs/<id>/complete` 後觸發
 
-def background_scanner():
-    # 每 DISPATCH_INTERVAL 秒：
-    #   偵測 last_heartbeat 超過 NODE_TIMEOUT_SEC → 標記 offline, consecutive_miss+1
-    #   偵測 running job 但 node offline → UPDATE job → queued（重排）
-    #   呼叫 try_dispatch()
-```
+> **注意：** `cgi.FieldStorage` 在 Python 3.10 中不支援 `bool()` 轉換與 `.get()` 方法，需用 `form['key']` 搭配 `is not None` 判斷。
 
-- [ ] `try_dispatch()` 實作（含 BEGIN IMMEDIATE）
-- [ ] `background_scanner()` daemon thread
-- [ ] `try_dispatch()` 在 `POST /api/jobs` 與 `POST /api/jobs/<id>/complete` 後觸發
+#### 驗證結果　✅ 已驗證
 
-#### 驗證
+```powershell
+# 查詢節點（heartbeat 自動註冊）
+Invoke-RestMethod -Uri "http://localhost:8080/api/nodes" -Method GET
+# → node1/2/3 均為 idle，last_heartbeat 正常更新
 
-```bash
-# 提交一個工作（需先手動建一個簡單 map_grid）
-curl -X POST http://localhost:8080/api/jobs \
-  -H "Content-Type: application/json" \
-  -d '{"map_grid":[[0,0],[0,0]],"products":{},"num_agents":2,"list_size":1,"max_steps":50,"algorithm":"PBS","seed":42}'
+# 提交工作
+Invoke-RestMethod -Uri "http://localhost:8080/api/jobs" -Method POST `
+  -ContentType "application/json" `
+  -Body '{"map_grid":[[0,0],[0,0]],"products":{"apple":5},"num_agents":2,"seed":42}'
+# → {"success":true,"data":{"job_id":"..."},...}  HTTP 201
 
-# 查詢工作狀態
-curl http://localhost:8080/api/jobs
+# 查詢工作狀態（約 15 秒後變 done）
+Invoke-RestMethod -Uri "http://localhost:8080/api/jobs" -Method GET
+# → status: running → done，result_gif_path 與 stats 正確寫入
 
-# 查詢節點狀態
-curl http://localhost:8080/api/nodes
+# 同時提交 4 個工作，確認 3 running + 1 queued
+1..4 | ForEach-Object { POST /api/jobs }
+# → 前 3 個分派到 node1/2/3，第 4 個 status=queued
 
-# 確認：3 個工作出去後第 4 個排隊
-# 確認：DELETE 可取消排隊工作
+# 取消排隊工作
+Invoke-RestMethod -Uri "http://localhost:8080/api/jobs/<id>" -Method DELETE
+# → {"success":true}，status 變 cancelled
+
+# 確認 running/done 工作無法取消
+# → HTTP 409 {"error":{"code":"CANNOT_CANCEL",...}}
+
+# 從容器內確認 GIF 取回
+docker exec web curl -sI "http://localhost:80/api/jobs/<id>/image"
+# → HTTP 200，Content-Type: image/gif
 ```
 
 ---
@@ -444,4 +444,4 @@ except Exception:
 
 ---
 
-*最後更新：Phase 1 完成（2026-05-27）*
+*最後更新：Phase 3 完成（2026-06-03）*

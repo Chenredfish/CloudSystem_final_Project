@@ -12,7 +12,7 @@
 | 1 | 基礎設施（Docker、SQLite、容器骨架） | ✅ 完成 |
 | 2 | 計算節點（/run、Heartbeat、compute.py stub） | ✅ 完成 |
 | 3 | Web 後端 API（全部 endpoint、Dispatcher） | ✅ 完成 |
-| 4 | MAPF 計算引擎（PBS、GIF 產出） | 🔲 待實作 |
+| 4 | MAPF 計算引擎（PBS、GIF 產出） | ✅ 完成 |
 | 5 | 前端（Canvas 編輯器、輪詢顯示） | ✅ 完成 |
 | 6 | 整合測試 | 🔲 待實作 |
 
@@ -269,58 +269,32 @@ docker exec web curl -sI "http://localhost:80/api/jobs/<id>/image"
 
 ---
 
-### Phase 4　MAPF 計算引擎
+### Phase 4　MAPF 計算引擎　✅ 完成
 
 **目標：** `compute.py` 能執行真正的 PBS MAPF 並產出 GIF。
 
-#### 4-1　astar.py　Time-Expanded A*
+#### 已建立的檔案
 
-```python
-def tea_star(grid, start, goal, reserved, max_steps):
-    # 在 (x, y, t) 三維空間搜索
-    # reserved: set of (x, y, t)
-    # 回傳: list of (x, y)，長度為抵達時間步數
-```
+- `node/mapf/astar.py` — Time-Expanded A*（heapq，5 動作，reserved 衝突檢查）
+- `node/mapf/pbs.py` — Priority-Based Search（依 agent 順序依序規劃，reserved 累積）
+- `node/mapf/simulation.py` — 模擬主控（seed 購物清單、庫存事件、收銀台結帳）
+- `node/mapf/render.py` — Pillow GIF（CELL=9px，彩色 agent 圓點，售罄紅 X，max 300 幀）
+- `node/mapf/compute.py` — 正式版，取代 stub（`python3 -m mapf.compute`）
+- `node/node_app.py` — 改為 `python3 -m mapf.compute` 啟動子程序
 
-- [ ] priority queue（heapq），狀態 = `(f, g, x, y, t)`
-- [ ] 鄰居：上下左右 + 等待原地（5 種動作）
-- [ ] 邊界 + 牆壁 + reserved 衝突檢查
-- [ ] 抵達 goal 後回傳完整路徑
+#### 驗證結果（2026-06-05）
 
-#### 4-2　pbs.py　Priority-Based Search
+- 5 agents，20×20 地圖，list_size=2，max_steps=120
+- makespan=73，all done，elapsed=1.72s
+- GIF89a，23 914 bytes，stub=false ✅
 
-- [ ] 按優先序（剩餘購物清單長度，長的優先）依序規劃每個 agent
-- [ ] 已規劃 agent 路徑加入 `reserved` 集合
-- [ ] 庫存事件：到達貨架 → 庫存 > 0 則取走，否則更新目標重規劃
-- [ ] 記錄每時步所有 agent 位置 → `frames: list[dict]`
+#### 實作說明
 
-#### 4-3　simulation.py　模擬主控
-
-- [ ] 依 `seed` 隨機產生每位顧客的購物清單（`list_size` 件）
-- [ ] 貪婪 TSP 排序目標（先去最近商品）
-- [ ] 呼叫 `pbs()` 執行模擬
-- [ ] 回傳 `frames` 與 `stats`（購買率、平均完成步數等）
-
-#### 4-4　render.py　視覺化
-
-- [ ] 用 `PIL.Image` 繪製每幀（格子地圖 + agent 圓點 + 貨架標籤）
-- [ ] 顏色：黑=牆、棕=貨架、黃=收銀台、彩色圓=顧客、紅X=售罄
-- [ ] 每幀 100ms，合成 GIF（最多 200 幀）
-
-#### 4-5　compute.py（正式版，取代 stub）
-
-- [ ] `sys.argv[1]` 讀取 job JSON
-- [ ] 呼叫 `simulation.run()` → `render.render_gif()`
-- [ ] callback multipart POST，指數退避重試
-- [ ] node/requirements.txt 加入 `numpy` 與 `Pillow`
-
-#### 驗證
-
-```bash
-# 在 node container 內單機執行
-docker exec node1 python3 mapf/compute.py '{"job_id":"test","map_grid":[...],...}'
-# 應在 15–35 秒內產出 GIF
-```
+- [x] Time-Expanded A*：heapq，(f, g, r, c, t)，5 種動作（等待+上下左右）
+- [x] PBS：固定優先序（agent 索引），reserved 累積，失敗 fallback = 原地等待
+- [x] 購物清單：`random.Random(seed)` 從貨架座標取樣
+- [x] 庫存事件：agent 抵達貨架時 in-situ 扣減，售罄跳過重新分配目標
+- [x] GIF：每幀 100ms，最多採 300 幀（stride 降採樣）
 
 ---
 

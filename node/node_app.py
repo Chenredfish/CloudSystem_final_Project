@@ -126,7 +126,7 @@ def run():
                 'error': {'code': 'NODE_BUSY', 'message': f"Already running {_current_job['job_id']}"},
             }), 409
         try:
-            proc = subprocess.Popen(['python3', 'mapf/compute.py', job_json])
+            proc = subprocess.Popen(['python3', '-m', 'mapf.compute', job_json])
         except Exception as e:
             return jsonify({
                 'success': False, 'data': None,

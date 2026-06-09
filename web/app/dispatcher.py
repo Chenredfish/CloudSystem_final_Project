@@ -129,6 +129,13 @@ def background_scanner():
                    WHERE status='running'
                      AND node_id IN (SELECT node_id FROM nodes WHERE status='offline')"""
             )
+            # Re-queue running jobs whose node restarted (idle but job still 'running')
+            conn.execute(
+                """UPDATE jobs
+                   SET status='queued', node_id=NULL, dispatched_at=NULL
+                   WHERE status='running'
+                     AND node_id IN (SELECT node_id FROM nodes WHERE status='idle')"""
+            )
             conn.commit()
         except Exception:
             try:

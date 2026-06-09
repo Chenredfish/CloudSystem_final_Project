@@ -1,10 +1,10 @@
 'use strict';
 
 // ─── Grid constants ────────────────────────────────────────────────────────────
-const ROWS = 60, COLS = 60, CELL = 9;
-const EMPTY = 0, WALL = 1, SHELF = 2, CASHIER = 3;
+let ROWS = 60, COLS = 60; const CELL = 9;
+const EMPTY = 0, WALL = 1, SHELF = 2, CASHIER = 3, ENTRANCE = 4;
 
-const CELL_COLOR = ['#e8e8e8', '#334155', '#3b82f6', '#22c55e'];
+const CELL_COLOR = ['#e8e8e8', '#334155', '#3b82f6', '#22c55e', '#f97316'];
 const GRID_LINE  = '#d4d4d4';
 
 // ─── State ─────────────────────────────────────────────────────────────────────
@@ -14,6 +14,7 @@ let drawing   = false;
 let lastCell       = null;
 let _jobs          = [];   // cached for modal
 let currentPreset  = 1;
+const _expandedInfoRows = new Set();
 
 // ─── Canvas setup ──────────────────────────────────────────────────────────────
 const canvas = document.getElementById('grid-canvas');
@@ -104,34 +105,49 @@ function _block(sr, sc, h, w) {
     }
 }
 
-// 小超市: 3 排貨架, 2×2 格, 寬走道, 少顧客
+// 小小超市: 2 排貨架, 3 組, 20×20 格, 演算法展示用
+function genTiny() {
+  grid = mkGrid(); _walls();
+  for (const sr of [3, 8])
+    for (let sc = 3; sc <= 15; sc += 6) _block(sr, sc, 2, 2);
+  for (let c = 3; c <= 15; c += 6) {
+    if (c + 1 < COLS - 1) { grid[16][c] = CASHIER;  grid[16][c + 1] = CASHIER;  }
+    if (c + 1 < COLS - 1) { grid[15][c] = ENTRANCE; grid[15][c + 1] = ENTRANCE; }
+  }
+  redraw(); syncSubmitInfo();
+}
+
+// 小超市: 3 排貨架, 2×2 格, 寬走道
 function genSmall() {
   grid = mkGrid(); _walls();
   for (const sr of [7, 16, 25])
     for (let sc = 4; sc <= 53; sc += 7) _block(sr, sc, 2, 2);
-  // 收銀台單排, row 42
+  // 收銀台 row 42
   for (let c = 4; c <= 53; c += 7)
     if (c+1 < COLS-1) { grid[42][c] = CASHIER; grid[42][c+1] = CASHIER; }
+  // 入口 row 41（收銀台正上方）
+  for (let c = 4; c <= 53; c += 7)
+    if (c+1 < COLS-1) { grid[41][c] = ENTRANCE; grid[41][c+1] = ENTRANCE; }
   redraw(); syncSubmitInfo();
 }
 
-// 中型商場: 7 排貨架, 2×2 格, 密度適中
+// 中型商場: 7 排貨架, 2×2 格
 function genMedium() {
   grid = mkGrid(); _walls();
   for (const sr of [4, 11, 18, 25, 32, 39, 46])
     for (const sc of [3, 8, 13, 18, 23, 28, 33, 38, 43, 48, 53]) _block(sr, sc, 2, 2);
-  // 收銀台, row 53
+  // 收銀台 row 53
   for (let c = 3; c <= 55; c += 5)
     if (c+1 < COLS-1) { grid[53][c] = CASHIER; grid[53][c+1] = CASHIER; }
+  // 入口 row 52（收銀台正上方）
+  for (let c = 3; c <= 55; c += 5)
+    if (c+1 < COLS-1) { grid[52][c] = ENTRANCE; grid[52][c+1] = ENTRANCE; }
   redraw(); syncSubmitInfo();
 }
 
-// 大型賣場: 兩翼佈局, 3 寬貨架, 中央主走道, 雙排收銀台
+// 大型賣場: 兩翼佈局, 3 寬貨架, 雙排收銀台
 function genLarge() {
   grid = mkGrid(); _walls();
-  // 左翼 cols 2-24 (6 組, 每組 3 寬, 間距 1)
-  // 右翼 cols 34-56 (6 組, 每組 3 寬, 間距 1)
-  // 中央走道 cols 25-33 (9 格)
   for (const sr of [3, 8, 13, 18, 23, 28, 33, 38, 43]) {
     for (const sc of [2, 6, 10, 14, 18, 22])    _block(sr, sc, 2, 3);
     for (const sc of [34, 38, 42, 46, 50, 54])  _block(sr, sc, 2, 3);
@@ -143,33 +159,55 @@ function genLarge() {
       grid[52][c] = CASHIER; grid[52][c+1] = CASHIER;
     }
   }
+  // 入口 row 50（收銀台正上方）
+  for (let c = 2; c <= 57; c += 4)
+    if (c+1 < COLS-1) { grid[50][c] = ENTRANCE; grid[50][c+1] = ENTRANCE; }
   redraw(); syncSubmitInfo();
 }
 
 // ─── Preset definitions ────────────────────────────────────────────────────────
 const PRESETS = [
-  { name: '小超市',   params: { agents: 10, listSize: 3, maxSteps: 150, seed: 42 }, gen: genSmall  },
-  { name: '中型商場', params: { agents: 20, listSize: 4, maxSteps: 200, seed: 42 }, gen: genMedium },
-  { name: '大型賣場', params: { agents: 35, listSize: 5, maxSteps: 300, seed: 99 }, gen: genLarge  },
+  { name: '小小超市', params: { agents:  3, listSize: 2, maxSteps:  80, seed: 42, spawnInterval: 0, goalReserve:  10, minTFloor: 20 }, gen: genTiny,   rows: 20, cols: 20 },
+  { name: '小超市',   params: { agents: 10, listSize: 3, maxSteps: 300, seed: 42, spawnInterval: 0, goalReserve: 200, minTFloor: 50 }, gen: genSmall,  rows: 60, cols: 60 },
+  { name: '中型商場', params: { agents: 20, listSize: 4, maxSteps: 500, seed: 42, spawnInterval: 0, goalReserve: 200, minTFloor: 50 }, gen: genMedium, rows: 60, cols: 60 },
+  { name: '大型賣場', params: { agents: 35, listSize: 5, maxSteps: 800, seed: 99, spawnInterval: 0, goalReserve: 200, minTFloor: 50 }, gen: genLarge,  rows: 60, cols: 60 },
 ];
 
 function selectPreset(i) {
   currentPreset = i;
   document.querySelectorAll('.preset-btn').forEach((b, j) => b.classList.toggle('active', j === i));
-  PRESETS[i].gen();
-  applyParams(PRESETS[i].params);
+  const p = PRESETS[i];
+  ROWS = p.rows ?? 60;
+  COLS = p.cols ?? 60;
+  canvas.width  = COLS * CELL;
+  canvas.height = ROWS * CELL;
+  p.gen();
+  applyParams(p.params);
 }
 
 function applyParams(p) {
-  document.getElementById('f-agents').value   = p.agents;
-  document.getElementById('f-listsize').value = p.listSize;
-  document.getElementById('f-maxsteps').value = p.maxSteps;
-  document.getElementById('f-seed').value     = p.seed;
+  document.getElementById('f-agents').value         = p.agents;
+  document.getElementById('f-listsize').value       = p.listSize;
+  document.getElementById('f-maxsteps').value       = p.maxSteps;
+  document.getElementById('f-seed').value           = p.seed;
+  document.getElementById('f-spawn-interval').value = p.spawnInterval ?? 0;
+  document.getElementById('f-goal-reserve').value   = p.goalReserve   ?? 200;
+  document.getElementById('f-min-t-floor').value    = p.minTFloor     ?? 50;
 }
 
 function resetParams() {
   applyParams(PRESETS[currentPreset].params);
   toast(`已重置為「${PRESETS[currentPreset].name}」預設值`, '');
+}
+
+function toggleAdv() {
+  const row = document.getElementById('adv-row');
+  const div = document.getElementById('adv-divider');
+  const btn = document.getElementById('adv-toggle');
+  const open = row.style.display !== 'none';
+  row.style.display = open ? 'none' : '';
+  div.style.display = open ? 'none' : '';
+  btn.textContent   = open ? '進階 ▾' : '進階 ▴';
 }
 
 function countType(t) {
@@ -181,11 +219,21 @@ function countType(t) {
 }
 
 function syncSubmitInfo() {
-  const shelves  = countType(SHELF);
-  const cashiers = countType(CASHIER);
-  const el = document.getElementById('submit-info');
-  el.textContent = `貨架 ${shelves} 格 · 收銀台 ${cashiers} 格`;
-  el.style.color = (shelves < 2 || cashiers < 1) ? '#dc2626' : '#94a3b8';
+  const shelves   = countType(SHELF);
+  const cashiers  = countType(CASHIER);
+  const entrances = countType(ENTRANCE);
+  const el  = document.getElementById('submit-info');
+  const btn = document.getElementById('submit-btn');
+
+  let warn = '';
+  if (entrances < 1) warn = '缺少入口（橘色格），至少放置 1 個後再提交';
+  else if (cashiers < 1) warn = '缺少收銀台（綠色格），至少放置 1 個後再提交';
+
+  el.textContent = warn || `貨架 ${shelves} 格 · 收銀台 ${cashiers} 格 · 入口 ${entrances} 格`;
+  el.style.color = warn ? '#dc2626' : '#94a3b8';
+  btn.disabled   = !!warn;
+
+  buildLegend();
 }
 
 // Build products dict: "row,col" → {name, stock:3}
@@ -210,23 +258,80 @@ function gridToArray() {
   return Array.from(grid, row => Array.from(row));
 }
 
+// ─── Legend ────────────────────────────────────────────────────────────────────
+function buildLegend() {
+  const content = document.getElementById('legend-content');
+  if (!content) return;
+
+  const groups = {S: [], C: [], E: []};
+  let si = 0, ci = 0, ei = 0;
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (grid[r][c] === SHELF)    groups.S.push({label:`S${++si}`, r, c});
+      if (grid[r][c] === CASHIER)  groups.C.push({label:`C${++ci}`, r, c});
+      if (grid[r][c] === ENTRANCE) groups.E.push({label:`E${++ei}`, r, c});
+    }
+  }
+
+  if (!si && !ci && !ei) {
+    content.innerHTML = '<div class="leg-empty">地圖尚無可編號格子</div>';
+    return;
+  }
+
+  function renderGroup(items, color, title) {
+    if (!items.length) return '';
+    return `<div class="leg-group">
+      <span class="leg-group-lbl" style="color:${color}">${title}</span>
+      ${items.map(e =>
+        `<button class="leg-chip" style="border-color:${color};color:${color}"
+           onclick="highlightCell(${e.r},${e.c})" title="(${e.r},${e.c})">${esc(e.label)}</button>`
+      ).join('')}
+    </div>`;
+  }
+
+  content.innerHTML =
+    renderGroup(groups.S, CELL_COLOR[SHELF],    '貨架') +
+    renderGroup(groups.C, CELL_COLOR[CASHIER],  '收銀台') +
+    renderGroup(groups.E, CELL_COLOR[ENTRANCE], '入口');
+}
+
+function highlightCell(r, c) {
+  const x = c * CELL, y = r * CELL;
+  let count = 0;
+  function flash() {
+    count++;
+    if (count % 2 === 1) {
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(x, y, CELL, CELL);
+    } else {
+      paintCell(r, c);
+    }
+    if (count < 6) setTimeout(flash, 160);
+    else paintCell(r, c);
+  }
+  flash();
+}
+
 // ─── Job submission ────────────────────────────────────────────────────────────
 async function submitJob() {
-  if (countType(SHELF) < 2)   { toast('至少需要 2 個貨架格', 'err');   return; }
-  if (countType(CASHIER) < 1) { toast('至少需要 1 個收銀台格', 'err'); return; }
+  if (countType(ENTRANCE) < 1) { toast('地圖缺少入口（橘色格），請至少放置一個', 'err'); return; }
+  if (countType(CASHIER)  < 1) { toast('地圖缺少收銀台（綠色格），請至少放置一個', 'err'); return; }
 
   const btn = document.getElementById('submit-btn');
   btn.disabled = true;
   btn.textContent = '提交中…';
 
   const payload = {
-    map_grid:   gridToArray(),
-    products:   buildProducts(),
-    num_agents: int('f-agents',   20),
-    list_size:  int('f-listsize', 4),
-    max_steps:  int('f-maxsteps', 200),
-    algorithm:  'PBS',
-    seed:       int('f-seed',     42),
+    map_grid:       gridToArray(),
+    products:       buildProducts(),
+    num_agents:     int('f-agents',         20),
+    list_size:      int('f-listsize',        4),
+    max_steps:      int('f-maxsteps',      200),
+    algorithm:      'PBS',
+    seed:           int('f-seed',           42),
+    spawn_interval: int('f-spawn-interval',  0),
+    goal_reserve:   int('f-goal-reserve',  200),
+    min_t_floor:    int('f-min-t-floor',    50),
   };
 
   try {
@@ -247,6 +352,7 @@ async function submitJob() {
   } finally {
     btn.disabled = false;
     btn.textContent = '提交任務';
+    syncSubmitInfo();  // re-evaluate disabled state
   }
 }
 
@@ -285,12 +391,15 @@ function renderNodes(nodes) {
     } else {
       detail = '無心跳';
     }
+    const cpu = (n.cpu_percent ?? 0).toFixed(1);
+    const mem = (n.mem_percent ?? 0).toFixed(1);
     return `<div class="node-card">
       <div class="node-head">
         <span class="node-name">${esc(n.node_id)}</span>
         <span class="badge-status ${cls}">${label}</span>
       </div>
       <div class="node-detail">${detail}</div>
+      <div class="node-metrics">CPU ${cpu}%　MEM ${mem}%</div>
     </div>`;
   }).join('');
 }
@@ -311,7 +420,7 @@ function renderJobs(jobs) {
     const node      = j.node_id || '—';
     const elapsed   = j.elapsed_sec != null ? j.elapsed_sec.toFixed(1) + 's' : '—';
     const actions   = buildActions(j);
-    return `<tr>
+    const mainRow = `<tr>
       <td class="job-id" title="${esc(j.id)}">${esc(j.id.slice(0,8))}…</td>
       <td><span class="badge-job ${badgeCls}">${statusTxt}</span></td>
       <td>${age}</td>
@@ -319,6 +428,13 @@ function renderJobs(jobs) {
       <td>${elapsed}</td>
       <td>${actions}</td>
     </tr>`;
+    const hasInfo = j.status === 'done' && j.stats && j.stats.agent_plans;
+    const infoRow = hasInfo
+      ? `<tr class="info-row" id="irow-${j.id}" style="${_expandedInfoRows.has(j.id) ? '' : 'display:none'}">
+           <td colspan="6">${buildInfoPanel(j)}</td>
+         </tr>`
+      : '';
+    return mainRow + infoRow;
   }).join('');
 }
 
@@ -330,7 +446,79 @@ function buildActions(j) {
   if (j.status === 'done' && j.result_gif_path) {
     parts.push(`<button class="btn-xs btn-view" onclick="showGif('${j.id}')">查看動畫</button>`);
   }
+  if (j.status === 'done' && j.stats && j.stats.agent_plans) {
+    parts.push(`<button class="btn-xs btn-info" onclick="toggleInfo('${j.id}')">查看資訊</button>`);
+  }
   return parts.join(' ') || '—';
+}
+
+function toggleInfo(jobId) {
+  const row = document.getElementById(`irow-${jobId}`);
+  if (!row) return;
+  const isOpen = row.style.display !== 'none';
+  row.style.display = isOpen ? 'none' : '';
+  if (isOpen) _expandedInfoRows.delete(jobId);
+  else _expandedInfoRows.add(jobId);
+}
+
+function buildInfoPanel(j) {
+  const s = j.stats;
+  if (!s || !s.agent_plans) return '<p class="ip-empty">無詳細資料</p>';
+
+  const agentRows = s.agent_plans.map((p, i) => {
+    const list = p.shopping_list.length
+      ? p.shopping_list.map(lbl =>
+          p.skipped_shelves.includes(lbl)
+            ? `<s class="sold-out-lbl">${esc(lbl)}</s>`
+            : esc(lbl)
+        ).join(' → ')
+      : '（無購物清單）';
+    const note = p.note
+      ? `<span class="ip-warn">${esc(p.note)}</span>`
+      : (p.skipped_shelves.length ? `${p.skipped_shelves.length} 項售罄` : '全數完成');
+    return `<tr>
+      <td>顧客 ${i+1}</td>
+      <td>${esc(p.start_label)}</td>
+      <td class="ip-list">${list}</td>
+      <td>${esc(p.assigned_cashier)}</td>
+      <td>${note}</td>
+    </tr>`;
+  }).join('');
+
+  const shelfRows = s.shelf_stock
+    ? Object.entries(s.shelf_stock).map(([lbl, info]) => {
+        const status = info.sold_out
+          ? '<span class="ip-warn">售罄</span>'
+          : '<span class="ip-ok">正常</span>';
+        return `<tr>
+          <td>${esc(lbl)}</td>
+          <td>${info.initial}</td>
+          <td>${info.final}</td>
+          <td>${status}</td>
+        </tr>`;
+      }).join('')
+    : '';
+
+  return `<div class="info-panel">
+    <div class="ip-section">
+      <div class="ip-title">顧客購物計畫</div>
+      <div class="ip-scroll">
+        <table class="ip-table">
+          <thead><tr><th>顧客</th><th>起點</th><th>購物清單</th><th>收銀台</th><th>結果</th></tr></thead>
+          <tbody>${agentRows}</tbody>
+        </table>
+      </div>
+    </div>
+    ${shelfRows ? `<div class="ip-section">
+      <div class="ip-title">貨架庫存</div>
+      <div class="ip-scroll">
+        <table class="ip-table">
+          <thead><tr><th>貨架</th><th>初始</th><th>最終</th><th>狀態</th></tr></thead>
+          <tbody>${shelfRows}</tbody>
+        </table>
+      </div>
+    </div>` : ''}
+  </div>`;
 }
 
 function fmtAge(sec) {
@@ -360,17 +548,28 @@ function showGif(jobId) {
   if (job && job.stats) {
     const s = job.stats;
     const rows = [
-      ['顧客人數',        s.agents        ?? '—'],
-      ['完成時步',        s.makespan       ?? '—'],
-      ['總代價',          s.sum_of_costs   ?? '—'],
-      ['演算法',          job.algorithm    || 'PBS'],
+      ['顧客人數',  s.agents        ?? '—'],
+      ['完成時步',  s.makespan       ?? '—'],
+      ['總代價',    s.sum_of_costs   ?? '—'],
+      ['演算法',    job.algorithm    || 'PBS'],
     ];
+    if (s.agents_done != null) rows.push(['完成顧客', `${s.agents_done} / ${s.agents}`]);
     if (s.stub) rows.push(['模式', 'Stub 測試']);
+    if (s.error) rows.push(['錯誤', s.error]);
     statsEl.innerHTML = rows.map(([l, v]) =>
-      `<div class="stat-card"><div class="stat-label">${l}</div><div class="stat-val">${v}</div></div>`
+      `<div class="stat-card"><div class="stat-label">${l}</div><div class="stat-val">${esc(String(v))}</div></div>`
     ).join('');
   } else {
     statsEl.innerHTML = '';
+  }
+
+  const infoEl = document.getElementById('modal-info');
+  if (job && job.stats && job.stats.agent_plans) {
+    infoEl.innerHTML = buildInfoPanel(job);
+    infoEl.style.display = '';
+  } else {
+    infoEl.innerHTML = '';
+    infoEl.style.display = 'none';
   }
 }
 
@@ -406,6 +605,6 @@ function esc(s) {
 }
 
 // ─── Init ──────────────────────────────────────────────────────────────────────
-selectPreset(1);   // 預設載入中型商場
+selectPreset(2);   // 預設載入中型商場
 poll();
 setInterval(poll, 3000);

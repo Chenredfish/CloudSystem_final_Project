@@ -1,15 +1,18 @@
 """Simulation controller for the shopping MAPF scenario.
 
-Runs the full multi-agent shopping simulation:
-  1. Generate shopping lists (seed-controlled)
-  2. PBS planning loop: each agent pursues its current target
-  3. Inventory events: first arrival claims stock; others re-plan
-  4. All agents end at any cashier
-  5. Returns frame list for GIF rendering
+Runs the full multi-agent shopping simulation with staggered spawn from entrance cells:
+  1. Build shelf/cashier/entrance index (row-major scan order → S1/C1/E1 labels)
+  2. Generate shopping lists and assign cashiers (seed-controlled)
+  3. Staggered spawn: first num_entrances agents at step 0, then one per spawn_interval
+  4. PBS planning loop: each spawned agent pursues its current target
+  5. Inventory events: first arrival claims stock; sold-out shelves are skipped
+  6. Returns frames for GIF rendering + expanded stats dict
 """
 import random
 
 from .pbs import plan_agents
+
+EMPTY, WALL, SHELF, CASHIER, ENTRANCE = 0, 1, 2, 3, 4
 
 
 def _find_cells(grid, cell_type):
@@ -21,156 +24,165 @@ def _find_cells(grid, cell_type):
     return out
 
 
-def _gen_shopping_lists(products, num_agents, list_size, seed):
-    """Generate per-agent shopping lists from available shelf cells."""
-    rng = random.Random(seed)
-    shelf_keys = list(products.keys())
-    if not shelf_keys:
-        return [[] for _ in range(num_agents)]
-    lists = []
-    for _ in range(num_agents):
-        chosen = rng.sample(shelf_keys, min(list_size, len(shelf_keys)))
-        lists.append(list(chosen))
-    return lists
+def _build_index(cells, prefix):
+    """Build {label: 'r,c'} dict in row-major scan order, starting at 1."""
+    return {f"{prefix}{i+1}": f"{r},{c}" for i, (r, c) in enumerate(cells)}
 
 
-def _gen_starts(grid, num_agents, cashier_cells, seed):
-    """Place agent starts on empty cells near cashiers (or random empty cells)."""
-    rng = random.Random(seed + 1)
-    rows = len(grid)
-    cols = len(grid[0]) if rows else 0
-    empty = [(r, c) for r in range(rows) for c in range(cols) if grid[r][c] == 0]
-    rng.shuffle(empty)
-    # prefer cells not at cashier positions
-    cashier_set = set(cashier_cells)
-    preferred = [p for p in empty if p not in cashier_set]
-    pool = (preferred + [p for p in empty if p in cashier_set])[:num_agents * 3]
-    used = set()
-    starts = []
-    for p in pool:
-        if p not in used:
-            starts.append(p)
-            used.add(p)
-        if len(starts) == num_agents:
-            break
-    # pad if not enough
-    while len(starts) < num_agents:
-        starts.append(starts[0] if starts else (1, 1))
-    return starts
+def _to_pos(rc_str):
+    r, c = rc_str.split(',')
+    return (int(r), int(c))
 
 
-def run_simulation(grid, products, num_agents, list_size, max_steps, seed):
-    """Run the full shopping simulation.
+def run_simulation(grid, products, num_agents, list_size, max_steps, seed,
+                   spawn_interval=0, min_t_floor=50, goal_reserve=200):
+    """Run the shopping simulation with staggered spawn from entrance cells.
+
+    Raises ValueError if no entrance cells or no cashier cells are found.
 
     Returns
     -------
-    frames  : list of dicts, one per simulated timestep:
-              {
-                'positions': [(r,c), ...],    # per-agent position
-                'inventory': {key: stock},    # remaining stock (copy)
-                'done': [bool, ...],          # agent finished?
-              }
-    stats   : dict with makespan, sum_of_costs, agents_done
+    frames  : list of dicts {positions, inventory, done}
+              positions[i] is (r,c) or None (agent not yet spawned)
+    stats   : dict with makespan, sum_of_costs, agent_plans, shelf_stock, etc.
     """
-    SHELF, CASHIER = 2, 3
-    cashier_cells = _find_cells(grid, CASHIER)
-    if not cashier_cells:
-        # Create a fallback cashier at bottom-left empty cell
-        for r in range(len(grid) - 2, 0, -1):
-            for c in range(1, len(grid[0]) - 1):
-                if grid[r][c] == 0:
-                    cashier_cells = [(r, c)]
-                    break
-            if cashier_cells:
-                break
+    shelf_cells    = _find_cells(grid, SHELF)
+    cashier_cells  = _find_cells(grid, CASHIER)
+    entrance_cells = _find_cells(grid, ENTRANCE)
 
-    # Parse products keys from "r,c" strings to (r,c) tuples
+    if not cashier_cells:
+        raise ValueError("地圖缺少收銀台格，無法執行模擬")
+    if not entrance_cells:
+        raise ValueError("地圖缺少入口格，無法執行模擬")
+
+    # Build label dicts (row-major scan order)
+    shelf_index    = _build_index(shelf_cells,    'S')
+    cashier_index  = _build_index(cashier_cells,  'C')
+    entrance_index = _build_index(entrance_cells, 'E')
+
+    # Reverse lookups: (r,c) → label
+    pos_to_shelf_lbl    = {_to_pos(rc): lbl for lbl, rc in shelf_index.items()}
+    pos_to_cashier_lbl  = {_to_pos(rc): lbl for lbl, rc in cashier_index.items()}
+    pos_to_entrance_lbl = {_to_pos(rc): lbl for lbl, rc in entrance_index.items()}
+
+    # Inventory: (r,c) → stock
     inventory = {}
     for key, info in products.items():
-        parts = key.split(',')
-        pos = (int(parts[0]), int(parts[1]))
-        inventory[pos] = int(info.get('stock', 1))
+        inventory[_to_pos(key)] = int(info.get('stock', 1))
 
-    shopping_lists = _gen_shopping_lists(products, num_agents, list_size, seed)
-    # Convert string keys to tuple keys in shopping lists
-    agent_todos = []
-    for lst in shopping_lists:
-        todo = []
-        for key in lst:
-            parts = key.split(',')
-            todo.append((int(parts[0]), int(parts[1])))
-        agent_todos.append(todo)
+    init_stock = {lbl: inventory.get(_to_pos(rc), 3) for lbl, rc in shelf_index.items()}
 
-    starts = _gen_starts(grid, num_agents, cashier_cells, seed)
-    positions = list(starts)
-    agent_done = [False] * num_agents
+    # Generate per-agent shopping lists (S-labels)
+    rng = random.Random(seed)
+    shelf_labels   = list(shelf_index.keys())
+    cashier_labels = list(cashier_index.keys())
 
-    # Current target for each agent (None = needs assignment)
-    agent_target = [None] * num_agents
-    agent_phase = ['shop'] * num_agents  # 'shop' or 'checkout'
+    original_lists = []
+    for _ in range(num_agents):
+        chosen = rng.sample(shelf_labels, min(list_size, len(shelf_labels))) if shelf_labels else []
+        original_lists.append(list(chosen))
+
+    # Working todo queues as (r,c) tuples
+    agent_todos = [[_to_pos(shelf_index[lbl]) for lbl in lst] for lst in original_lists]
+
+    # Assign one cashier per agent
+    rng_cashier = random.Random(seed + 2)
+    agent_cashier_lbl = [rng_cashier.choice(cashier_labels) for _ in range(num_agents)]
+    agent_cashier_pos = [_to_pos(cashier_index[lbl]) for lbl in agent_cashier_lbl]
+
+    # Staggered spawn schedule
+    num_entrances = len(entrance_cells)
+    if spawn_interval <= 0:
+        spawn_interval = max(3, 60 // num_agents)
+    rng_spawn      = random.Random(seed + 1)
+    shuffled_ent   = list(entrance_cells)
+    rng_spawn.shuffle(shuffled_ent)
+
+    agent_spawn_step   = []
+    agent_entrance_pos = []
+    for i in range(num_agents):
+        if i < num_entrances:
+            agent_spawn_step.append(0)
+            agent_entrance_pos.append(shuffled_ent[i])
+        else:
+            batch = i - num_entrances
+            agent_spawn_step.append(spawn_interval * (batch + 1))
+            agent_entrance_pos.append(shuffled_ent[i % num_entrances])
+
+    # Simulation state
+    positions     = [None] * num_agents   # None = not yet spawned
+    agent_done    = [False] * num_agents
+    agent_phase   = ['shop'] * num_agents  # 'shop' or 'checkout'
+    agent_target  = [None] * num_agents
+    agent_skipped = [[] for _ in range(num_agents)]  # S-labels skipped (sold-out)
 
     frames = []
     sum_of_costs = 0
 
-    # Assign initial targets
-    rng_cashier = random.Random(seed + 2)
-
     def _assign_target(i):
-        if agent_todos[i]:
-            # Next shelf target from shopping list
-            target = agent_todos[i][0]
-            if inventory.get(target, 0) <= 0:
-                # Out of stock — skip it
-                agent_todos[i].pop(0)
-                return _assign_target(i)
-            return target
-        else:
-            # Go to a cashier
-            agent_phase[i] = 'checkout'
-            return rng_cashier.choice(cashier_cells)
-
-    for i in range(num_agents):
-        agent_target[i] = _assign_target(i)
+        """Return next target (r,c) for agent i. Skips sold-out shelves in-place."""
+        while agent_todos[i]:
+            tgt = agent_todos[i][0]
+            if inventory.get(tgt, 0) > 0:
+                return tgt
+            # Sold out — skip and record
+            lbl = pos_to_shelf_lbl.get(tgt, f"{tgt[0]},{tgt[1]}")
+            if lbl not in agent_skipped[i]:
+                agent_skipped[i].append(lbl)
+            agent_todos[i].pop(0)
+        # All items done → go to assigned cashier
+        agent_phase[i] = 'checkout'
+        return agent_cashier_pos[i]
 
     for step in range(max_steps):
-        active = [i for i in range(num_agents) if not agent_done[i]]
-        if not active:
+        # Spawn agents whose scheduled step has arrived (FIFO, entrance-conflict-aware)
+        ready = sorted(
+            [i for i in range(num_agents) if positions[i] is None and agent_spawn_step[i] <= step],
+            key=lambda i: agent_spawn_step[i],
+        )
+        occupied = {pos for pos in positions if pos is not None}
+        for i in ready:
+            ep = agent_entrance_pos[i]
+            if ep not in occupied:
+                positions[i] = ep
+                occupied.add(ep)
+                agent_target[i] = _assign_target(i)
+
+        active  = [i for i in range(num_agents) if positions[i] is not None and not agent_done[i]]
+        pending = [i for i in range(num_agents) if positions[i] is None]
+
+        if not active and not pending:
             break
 
-        # Plan one step for all active agents simultaneously
-        active_starts = [positions[i] for i in active]
-        active_targets = [agent_target[i] for i in active]
+        if active:
+            paths = plan_agents(
+                grid,
+                [positions[i] for i in active],
+                [agent_target[i] for i in active],
+                max_t=max(max_steps - step, min_t_floor),
+                goal_reserve=goal_reserve,
+            )
 
-        paths = plan_agents(grid, active_starts, active_targets, max_t=max(max_steps - step, 50))
+            new_positions = list(positions)
+            for j, i in enumerate(active):
+                if len(paths[j]) > 1:
+                    new_positions[i] = paths[j][1]
 
-        # Advance one step: each agent moves to paths[j][1] if available, else stays
-        new_positions = list(positions)
-        for j, i in enumerate(active):
-            path = paths[j]
-            if len(path) > 1:
-                new_positions[i] = path[1]
-            # else stay put
+            for j, i in enumerate(active):
+                pos = new_positions[i]
+                tgt = agent_target[i]
+                if pos == tgt:
+                    if agent_phase[i] == 'shop':
+                        if agent_todos[i] and agent_todos[i][0] == tgt:
+                            if inventory.get(tgt, 0) > 0:
+                                inventory[tgt] -= 1
+                                agent_todos[i].pop(0)
+                        agent_target[i] = _assign_target(i)
+                    elif agent_phase[i] == 'checkout':
+                        agent_done[i] = True
+                        sum_of_costs += step + 1
 
-        # Detect arrivals (agents at their target)
-        for j, i in enumerate(active):
-            pos = new_positions[i]
-            tgt = agent_target[i]
-
-            if pos == tgt:
-                if agent_phase[i] == 'shop':
-                    # Try to claim item
-                    if agent_todos[i] and agent_todos[i][0] == tgt:
-                        if inventory.get(tgt, 0) > 0:
-                            inventory[tgt] -= 1
-                            agent_todos[i].pop(0)
-                    # Get next target
-                    agent_target[i] = _assign_target(i)
-
-                elif agent_phase[i] == 'checkout':
-                    agent_done[i] = True
-                    sum_of_costs += step + 1
-
-        positions = new_positions
+            positions = new_positions
 
         frames.append({
             'positions': list(positions),
@@ -178,17 +190,50 @@ def run_simulation(grid, products, num_agents, list_size, max_steps, seed):
             'done': list(agent_done),
         })
 
-    # Agents not done by max_steps
     for i in range(num_agents):
         if not agent_done[i]:
             sum_of_costs += max_steps
 
     makespan = len(frames)
+
+    # Shelf stock summary
+    shelf_stock = {}
+    for lbl, rc in shelf_index.items():
+        pos = _to_pos(rc)
+        final = inventory.get(pos, 0)
+        initial = init_stock[lbl]
+        shelf_stock[lbl] = {
+            'initial': initial,
+            'final': final,
+            'sold_out': final == 0 and initial > 0,
+        }
+
+    # Per-agent plan records
+    agent_plans = []
+    for i in range(num_agents):
+        ep  = agent_entrance_pos[i]
+        plan = {
+            'id': i,
+            'start': f"{ep[0]},{ep[1]}",
+            'start_label': pos_to_entrance_lbl.get(ep, '?'),
+            'shopping_list': original_lists[i],
+            'assigned_cashier': agent_cashier_lbl[i],
+            'skipped_shelves': agent_skipped[i],
+        }
+        if not agent_done[i]:
+            plan['note'] = '超時未完成'
+        agent_plans.append(plan)
+
     stats = {
         'agents': num_agents,
         'makespan': makespan,
         'sum_of_costs': sum_of_costs,
         'agents_done': sum(agent_done),
         'stub': False,
+        'shelf_index':    shelf_index,
+        'cashier_index':  cashier_index,
+        'entrance_index': entrance_index,
+        'agent_plans': agent_plans,
+        'shelf_stock': shelf_stock,
     }
     return frames, stats

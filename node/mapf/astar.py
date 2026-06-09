@@ -30,7 +30,7 @@ def astar(grid, start, goal, reserved, max_t=500):
         cell = grid[r][c]
         if (r, c) == goal:
             return True
-        return cell == 0  # only EMPTY is traversable mid-path
+        return cell in (0, 4)  # EMPTY and ENTRANCE are traversable mid-path
 
     sr, sc = start
     gr, gc = goal

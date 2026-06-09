@@ -70,6 +70,7 @@
     /* ── Left column: editor ── */
     .editor-col {
       flex-shrink: 0;
+      width: 540px;          /* COLS × CELL = 60 × 9, keeps flex chips from expanding layout */
       display: flex;
       flex-direction: column;
       gap: 10px;
@@ -103,6 +104,7 @@
     .tool-btn[data-tool="1"].active { background: #334155; color: #fff; border-color: #334155; }
     .tool-btn[data-tool="2"].active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
     .tool-btn[data-tool="3"].active { background: #22c55e; color: #fff; border-color: #22c55e; }
+    .tool-btn[data-tool="4"].active { background: #f97316; color: #fff; border-color: #f97316; }
     .tool-btn[data-tool="0"].active { background: #94a3b8; color: #fff; border-color: #94a3b8; }
 
     .legend {
@@ -175,6 +177,54 @@
       touch-action: none;
     }
 
+    /* ── Legend panel (below canvas) ── */
+    .legend-panel {
+      padding: 8px 12px;
+      overflow: hidden;      /* BFC: chip buttons don't expand the panel beyond parent width */
+    }
+    .legend-panel-title {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: #94a3b8;
+      margin-bottom: 6px;
+    }
+    #legend-content {
+      max-height: 120px;
+      overflow-y: auto;
+    }
+    .leg-group {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px;
+      margin-bottom: 5px;
+    }
+    .leg-group-lbl {
+      font-size: 10px;
+      font-weight: 700;
+      min-width: 38px;
+      flex-shrink: 0;
+    }
+    .leg-chip {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 1px 6px;
+      border-radius: 3px;
+      border: 1px solid currentColor;
+      background: transparent;
+      cursor: pointer;
+      line-height: 1.6;
+      transition: background .1s;
+    }
+    .leg-chip:hover { background: rgba(0,0,0,.06); }
+    .leg-empty {
+      font-size: 11px;
+      color: #94a3b8;
+      padding: 4px 0;
+    }
+
     /* Submit bar */
     .submit-bar {
       background: #fff;
@@ -214,6 +264,30 @@
     .btn-primary:hover { background: #1d4ed8; }
     .btn-primary:disabled { background: #93c5fd; cursor: not-allowed; }
     #submit-info { font-size: 11px; color: #94a3b8; }
+
+    /* Advanced params row */
+    .adv-divider {
+      flex-basis: 100%;
+      height: 1px;
+      background: #f1f5f9;
+      margin: 2px 0;
+    }
+    .adv-row {
+      flex-basis: 100%;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+    .adv-section-lbl {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: #94a3b8;
+      white-space: nowrap;
+    }
+    .field input[type="number"][title] { cursor: help; }
 
     /* ── Right column ── */
     .info-col {
@@ -255,6 +329,7 @@
     .s-busy   { background: #fef9c3; color: #a16207; }
     .s-offline{ background: #fee2e2; color: #b91c1c; }
     .node-detail { font-size: 11px; color: #94a3b8; }
+    .node-metrics { font-size: 11px; color: #64748b; margin-top: 3px; }
     .no-nodes { padding: 16px 14px; font-size: 13px; color: #94a3b8; }
 
     /* Jobs table */
@@ -315,6 +390,52 @@
     .btn-cancel:hover { background: #fecaca; }
     .btn-view   { background: #dbeafe; color: #1d4ed8; }
     .btn-view:hover { background: #bfdbfe; }
+    .btn-info   { background: #fef3c7; color: #92400e; }
+    .btn-info:hover { background: #fde68a; }
+
+    /* ── Info row (expandable below job row) ── */
+    .info-row > td { padding: 0; background: #f8fafc; border-bottom: 2px solid #e2e8f0; }
+
+    /* ── Info panel (shared by job row expansion and modal) ── */
+    .info-panel {
+      padding: 12px 14px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .ip-section { flex: 1; min-width: 260px; }
+    .ip-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: #64748b;
+      margin-bottom: 6px;
+    }
+    .ip-scroll { overflow-x: auto; max-height: 220px; overflow-y: auto; }
+    .ip-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
+    .ip-table th {
+      text-align: left;
+      padding: 4px 8px;
+      background: #f1f5f9;
+      color: #94a3b8;
+      font-weight: 700;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      position: sticky;
+      top: 0;
+    }
+    .ip-table td { padding: 4px 8px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+    .ip-table .ip-list { font-size: 11px; }
+    .sold-out-lbl { color: #dc2626; text-decoration: line-through; }
+    .ip-warn { color: #dc2626; font-weight: 600; }
+    .ip-ok   { color: #16a34a; }
+    .ip-empty { padding: 12px; font-size: 12px; color: #94a3b8; }
 
     /* ── Modal ── */
     .overlay {
@@ -331,11 +452,11 @@
       background: #fff;
       border-radius: 10px;
       padding: 20px;
-      max-width: 90vw;
+      max-width: 92vw;
       max-height: 90vh;
       overflow: auto;
       position: relative;
-      min-width: 280px;
+      min-width: 300px;
     }
     .modal-close {
       position: absolute;
@@ -370,6 +491,9 @@
     .stat-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 3px; }
     .stat-val { font-size: 18px; font-weight: 700; }
 
+    #modal-info { margin-top: 14px; border-top: 1px solid #f1f5f9; padding-top: 6px; }
+    #modal-info .info-panel { padding: 8px 0; }
+
     /* ── Toast ── */
     #toast-root { position: fixed; bottom: 18px; right: 18px; z-index: 100; display: flex; flex-direction: column; gap: 8px; }
     .toast {
@@ -403,16 +527,20 @@
     <div class="preset-bar panel">
       <span class="preset-bar-lbl">方案</span>
       <button class="preset-btn" id="pb-0" onclick="selectPreset(0)">
+        <span class="pname">小小超市</span>
+        <span class="pdesc">3 人 · 2 件 · 20×20</span>
+      </button>
+      <button class="preset-btn" id="pb-1" onclick="selectPreset(1)">
         <span class="pname">小超市</span>
-        <span class="pdesc">10 人 · 3 件 · 150 步</span>
+        <span class="pdesc">10 人 · 3 件 · 300 步</span>
       </button>
-      <button class="preset-btn active" id="pb-1" onclick="selectPreset(1)">
+      <button class="preset-btn active" id="pb-2" onclick="selectPreset(2)">
         <span class="pname">中型商場</span>
-        <span class="pdesc">20 人 · 4 件 · 200 步</span>
+        <span class="pdesc">20 人 · 4 件 · 500 步</span>
       </button>
-      <button class="preset-btn" id="pb-2" onclick="selectPreset(2)">
+      <button class="preset-btn" id="pb-3" onclick="selectPreset(3)">
         <span class="pname">大型賣場</span>
-        <span class="pdesc">35 人 · 5 件 · 300 步</span>
+        <span class="pdesc">35 人 · 5 件 · 800 步</span>
       </button>
     </div>
 
@@ -421,6 +549,7 @@
       <button class="tool-btn active" data-tool="1" onclick="selectTool(1,this)">■ 牆壁</button>
       <button class="tool-btn"        data-tool="2" onclick="selectTool(2,this)">■ 貨架</button>
       <button class="tool-btn"        data-tool="3" onclick="selectTool(3,this)">■ 收銀台</button>
+      <button class="tool-btn"        data-tool="4" onclick="selectTool(4,this)">■ 入口</button>
       <button class="tool-btn"        data-tool="0" onclick="selectTool(0,this)">◌ 清除</button>
       <div class="vsep"></div>
       <div class="legend">
@@ -428,6 +557,7 @@
         <div class="leg-item"><div class="leg-swatch" style="background:#334155"></div>牆</div>
         <div class="leg-item"><div class="leg-swatch" style="background:#3b82f6"></div>貨架</div>
         <div class="leg-item"><div class="leg-swatch" style="background:#22c55e"></div>收銀台</div>
+        <div class="leg-item"><div class="leg-swatch" style="background:#f97316"></div>入口</div>
       </div>
       <div class="vsep"></div>
       <button class="act-btn ghost" onclick="clearGrid()">清除全部</button>
@@ -436,6 +566,12 @@
     <!-- Canvas -->
     <div class="canvas-wrap panel">
       <canvas id="grid-canvas"></canvas>
+    </div>
+
+    <!-- Legend panel (cell numbering) -->
+    <div class="panel legend-panel">
+      <div class="legend-panel-title">格子編號圖例（點擊可定位）</div>
+      <div id="legend-content"></div>
     </div>
 
     <!-- Submit bar -->
@@ -457,8 +593,27 @@
         <input type="number" id="f-seed"     value="42"  min="0">
       </div>
       <button class="act-btn ghost" onclick="resetParams()" title="重置為目前方案的預設值">↺ 重置參數</button>
+      <button class="act-btn ghost" id="adv-toggle" onclick="toggleAdv()">進階 ▾</button>
       <button class="btn-primary" id="submit-btn" onclick="submitJob()">提交任務</button>
       <span id="submit-info"></span>
+
+      <!-- Advanced algorithm params (hidden by default) -->
+      <div class="adv-divider" id="adv-divider" style="display:none"></div>
+      <div class="adv-row" id="adv-row" style="display:none">
+        <span class="adv-section-lbl">進階</span>
+        <div class="field">
+          <label title="0 = 自動（60 ÷ 人數），每隔幾步進場一批顧客">進場間隔（步，0=自動）</label>
+          <input type="number" id="f-spawn-interval" value="0" min="0" max="50" title="0 = 自動（60 ÷ 人數）">
+        </div>
+        <div class="field">
+          <label title="agent 抵達目標後，繼續佔用格子的步數，避免後方顧客衝進去">目標保留（步）</label>
+          <input type="number" id="f-goal-reserve" value="200" min="0" max="500" title="抵達目標後保留格子的步數">
+        </div>
+        <div class="field">
+          <label title="A* 搜索的最短時間視窗（步），防止末期搜索空間過小">A* 最短視窗</label>
+          <input type="number" id="f-min-t-floor" value="50" min="10" max="300" title="A* 最短時間視窗">
+        </div>
+      </div>
     </div>
 
   </div><!-- /editor-col -->
@@ -509,6 +664,7 @@
     <h2 id="modal-title">任務結果</h2>
     <img id="modal-gif" src="" alt="MAPF 動畫">
     <div class="modal-stats" id="modal-stats"></div>
+    <div id="modal-info" style="display:none"></div>
   </div>
 </div>
 

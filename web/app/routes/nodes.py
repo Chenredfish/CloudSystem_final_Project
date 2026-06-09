@@ -35,5 +35,7 @@ def _heartbeat(environ, start_response, node_id):
     body = _parse_json_body(environ)
     status = body.get('status', 'idle')
     current_job_id = body.get('current_job_id')
-    upsert_node(node_id, status, current_job_id, time.time())
+    cpu_percent = float(body.get('cpu_percent', 0.0))
+    mem_percent = float(body.get('mem_percent', 0.0))
+    upsert_node(node_id, status, current_job_id, time.time(), cpu_percent, mem_percent)
     return _json_resp(start_response, 200, data={'node_id': node_id})

@@ -49,10 +49,18 @@ def init_db():
             status           TEXT NOT NULL DEFAULT 'unknown',
             current_job_id   TEXT,
             last_heartbeat   REAL,
-            consecutive_miss INTEGER NOT NULL DEFAULT 0
+            consecutive_miss INTEGER NOT NULL DEFAULT 0,
+            cpu_percent      REAL NOT NULL DEFAULT 0.0,
+            mem_percent      REAL NOT NULL DEFAULT 0.0
         );
     """)
-    conn.commit()
+    # Migration: add columns if table already existed without them
+    for col, dtype in [('cpu_percent', 'REAL'), ('mem_percent', 'REAL')]:
+        try:
+            conn.execute(f"ALTER TABLE nodes ADD COLUMN {col} {dtype} NOT NULL DEFAULT 0.0")
+            conn.commit()
+        except Exception:
+            pass
     conn.close()
 
 
@@ -136,17 +144,19 @@ def save_job_result(id, gif_path, stats, elapsed_sec):
 
 # ── nodes CRUD ────────────────────────────────────────────────────────────────
 
-def upsert_node(node_id, status, current_job_id, last_heartbeat):
+def upsert_node(node_id, status, current_job_id, last_heartbeat, cpu_percent=0.0, mem_percent=0.0):
     conn = get_connection()
     conn.execute(
-        """INSERT INTO nodes (node_id, status, current_job_id, last_heartbeat, consecutive_miss)
-           VALUES (?, ?, ?, ?, 0)
+        """INSERT INTO nodes (node_id, status, current_job_id, last_heartbeat, consecutive_miss, cpu_percent, mem_percent)
+           VALUES (?, ?, ?, ?, 0, ?, ?)
            ON CONFLICT(node_id) DO UPDATE SET
                status          = excluded.status,
                current_job_id  = excluded.current_job_id,
                last_heartbeat  = excluded.last_heartbeat,
-               consecutive_miss = 0""",
-        (node_id, status, current_job_id, last_heartbeat),
+               consecutive_miss = 0,
+               cpu_percent     = excluded.cpu_percent,
+               mem_percent     = excluded.mem_percent""",
+        (node_id, status, current_job_id, last_heartbeat, cpu_percent, mem_percent),
     )
     conn.commit()
     conn.close()

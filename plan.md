@@ -14,7 +14,10 @@
 | 3 | Web 後端 API（全部 endpoint、Dispatcher） | ✅ 完成 |
 | 4 | MAPF 計算引擎（PBS、GIF 產出） | ✅ 完成 |
 | 5 | 前端（Canvas 編輯器、輪詢顯示） | ✅ 完成 |
-| 6 | 整合測試 | 🔲 待實作 |
+| Feature v2 | 入口格（ENTRANCE）+ 資訊面板 + GIF 格子編號標籤 | ✅ 完成 |
+| Hotfix | Preset max_steps 調整（150/200/300 → 300/500/800）修正超時 | ✅ 完成 |
+| 6 | 整合測試（修復 2 個 bug + 實作 CPU/MEM 顯示） | ✅ 完成 |
+| 算法參數可視化 | 三個封裝參數（進場間隔、目標保留步數、A* 最短視窗）暴露至前端進階面板 | ✅ 完成 |
 
 ---
 
@@ -353,14 +356,24 @@ $r = Invoke-WebRequest -Uri "http://localhost:8080/api/jobs" -Method POST `
 
 ---
 
-### Phase 6　整合測試
+### Phase 6　整合測試　✅ 完成（2026-06-09）
 
-- [ ] 同時提交 4 個工作，確認排隊行為正確（3 個出去、1 個排隊）
-- [ ] 取消排隊工作；確認 running / done 工作無法取消（回傳 409）
-- [ ] `docker stop node1`，確認 35 秒後標記 offline、工作重排
-- [ ] 恢復 node1（`docker start node1`），確認心跳恢復、重新接受工作
-- [ ] `docker compose down && docker compose up`：工作狀態從 SQLite 正確恢復
-- [ ] 確認各節點 CPU/MEM 數字即時更新
+- [x] 同時提交 4 個工作，確認排隊行為正確（3 個出去、1 個排隊）→ ✅ 第 4 個工作延遲 0.4s 派給已完成的節點
+- [x] 取消排隊工作；確認 running / done 工作無法取消（回傳 409）→ ✅
+- [x] `docker stop node1`，確認 offline 標記 + 工作重排 → ✅ node1 offline, 工作重排至 node2
+- [x] 恢復 node1（`docker start node1`），確認心跳恢復、重新接受工作 → ✅ miss 歸零
+- [x] `docker compose down && docker compose up`：工作狀態從 SQLite 正確恢復 → ✅（修復了 Bug #1）
+- [x] 確認各節點 CPU/MEM 數字即時更新 → ✅（實作了缺失功能 + 修復 Bug #2）
+
+#### 發現並修復的問題
+
+**Bug #1：節點重啟後孤立的 running job 永遠不被重排**  
+`background_scanner` 只處理 offline 節點，不處理「節點重啟後變回 idle 但 job 還是 running」的情況。  
+修復：`dispatcher.py` 加入 re-queue 邏輯，也處理 `node status='idle'` 的孤立 running jobs。
+
+**Bug #2：CPU/MEM 完全沒有串接**  
+heartbeat 沒有帶 cpu/mem；nodes 表沒有對應欄位；前端沒有顯示。  
+修復：`node_app.py` heartbeat 帶 cpu/mem → `db.py` 新增欄位（含 ALTER TABLE migration）→ `routes/nodes.py` 解析存入 → `app.js` 節點卡顯示。
 
 ---
 
@@ -428,4 +441,4 @@ except Exception:
 
 ---
 
-*最後更新：Phase 5 完成（2026-06-03）*
+*最後更新：算法參數可視化完成（2026-06-09）*

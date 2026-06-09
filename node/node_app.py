@@ -40,9 +40,15 @@ def _heartbeat_loop():
     while True:
         try:
             job_id = _get_current_job_id()
+            cpu_pct, mem_pct, _, _ = _parse_top()
             requests.post(
                 f"{WEB_CALLBACK_URL}/api/nodes/{NODE_ID}/heartbeat",
-                json={'status': 'busy' if job_id else 'idle', 'current_job_id': job_id},
+                json={
+                    'status': 'busy' if job_id else 'idle',
+                    'current_job_id': job_id,
+                    'cpu_percent': cpu_pct,
+                    'mem_percent': mem_pct,
+                },
                 timeout=5,
             )
         except Exception:

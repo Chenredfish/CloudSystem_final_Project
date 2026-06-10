@@ -10,16 +10,19 @@ def heuristic(r, c, goal_r, goal_c):
 _MOVES = [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]
 
 
-def astar(grid, start, goal, reserved, max_t=500):
+def astar(grid, start, goal, reserved, max_t=500, edge_reserved=None):
     """Return path as list of (r, c) from start to goal (inclusive), or None.
 
-    grid      : 2D list, 0=passable EMPTY, 1=WALL, 2=SHELF, 3=CASHIER
-                Cells with type SHELF/CASHIER are treated as obstacles UNLESS
-                they are the goal cell.
-    start     : (r, c)
-    goal      : (r, c)
-    reserved  : set of (r, c, t) that are occupied by other agents.
-    max_t     : time horizon (abort if exceeded).
+    grid          : 2D list, 0=passable EMPTY, 1=WALL, 2=SHELF, 3=CASHIER
+                    Cells with type SHELF/CASHIER are treated as obstacles UNLESS
+                    they are the goal cell.
+    start         : (r, c)
+    goal          : (r, c)
+    reserved      : set of (r, c, t) occupied by higher-priority agents.
+    max_t         : time horizon (abort if exceeded).
+    edge_reserved : set of (r, c, nr, nc, t) — swap-conflict edges to avoid.
+                    Meaning: moving from (r,c) to (nr,nc) at time step t is forbidden
+                    because a higher-priority agent is doing the reverse at the same time.
     """
     rows = len(grid)
     cols = len(grid[0]) if rows else 0
@@ -39,7 +42,6 @@ def astar(grid, start, goal, reserved, max_t=500):
         return None
 
     # heap: (f, g, r, c, t, parent_index)
-    # We store states in a list and use indices for parent tracking
     open_heap = []
     h0 = heuristic(sr, sc, gr, gc)
     heapq.heappush(open_heap, (h0, 0, sr, sc, 0, -1))
@@ -76,11 +78,11 @@ def astar(grid, start, goal, reserved, max_t=500):
             nr, nc = r + dr, c + dc
             if not passable(nr, nc):
                 continue
+            # Vertex conflict: cell occupied by a higher-priority agent at nt
             if (nr, nc, nt) in reserved:
                 continue
-            # vertex conflict: check if another agent sits there at nt
-            # edge conflict: check swap (r,c) ↔ (nr,nc) between t and nt
-            if (r, c, nt) in reserved and (nr, nc) == (r, c):
+            # Swap conflict: a higher-priority agent moves (nr,nc)→(r,c) at time t
+            if edge_reserved and (nr, nc, r, c, t) in edge_reserved:
                 continue
             ng = g + 1
             if (nr, nc, nt) in visited and visited[(nr, nc, nt)] <= ng:

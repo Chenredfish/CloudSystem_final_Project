@@ -13,7 +13,7 @@ services:
       - IMAGE_DIR=/data/images
       - DISPATCH_INTERVAL=5
       - MAX_RETRY=3
-      - NODE_TIMEOUT_SEC=35
+      - NODE_TIMEOUT_SEC=12
       - WEB_CALLBACK_URL=http://web:80
     depends_on:
       - node1

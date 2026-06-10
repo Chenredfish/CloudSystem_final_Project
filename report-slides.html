@@ -190,7 +190,7 @@ tr:nth-child(even) td { background: #f8fafc; }
   <div class="slide-header">
     <div class="slide-label">系統架構</div>
     <div class="slide-title">四容器分散式架構</div>
-    <div class="slide-subtitle">以 Docker Compose 編排，共享 SQLite 資料庫</div>
+    <div class="slide-subtitle">以 Docker Compose bridge network 編排，HTTP REST 為跨容器通訊介面</div>
   </div>
 
   <div class="two-col-37" style="flex:1">
@@ -206,10 +206,15 @@ tr:nth-child(even) td { background: #f8fafc; }
         <span style="font-size:9pt;color:#475569">Gunicorn (1 worker) + Flask<br>
         執行 PBS 模擬，回傳 GIF</span>
       </div>
-      <h3 style="margin-top:10px">共用資源</h3>
+      <h3 style="margin-top:10px">通訊機制</h3>
       <ul>
-        <li>SQLite volume（WAL mode）</li>
-        <li>REST callback 介面</li>
+        <li>Docker bridge network（cluster）</li>
+        <li>HTTP REST API（容器間互呼）</li>
+      </ul>
+      <h3 style="margin-top:8px">持久化儲存</h3>
+      <ul>
+        <li>./data volume（web 專用）</li>
+        <li>SQLite WAL + GIF 圖檔</li>
       </ul>
     </div>
     <div>
@@ -217,30 +222,30 @@ tr:nth-child(even) td { background: #f8fafc; }
 ┌─────────────────────────────────────────┐
 │              Browser                    │
 └──────────────────┬──────────────────────┘
-                   │  HTTP
+                   │  HTTP (port 8080)
 ┌──────────────────▼──────────────────────┐
-│   web  (Apache + mod_wsgi + Flask)      │
-│   ┌──────────┐  ┌──────────────────┐   │
-│   │ Dispatcher│  │  REST API        │   │
-│   │  scanner  │  │  /api/jobs       │   │
-│   └─────┬────┘  │  /api/nodes      │   │
-│         │ dispatch  └──────────────────┘   │
-│         │                                 │
-└─────────┼───────────────────────────────┘
-    ┌─────┴──────┬──────────────┐
-    │ dispatch   │              │
+│         web  (Apache + Flask)           │
+│  ┌───────────┐   ┌──────────────────┐  │
+│  │Dispatcher │   │  REST API        │  │
+│  │ scanner   │   │  /api/jobs       │  │
+│  └─────┬─────┘   │  /api/nodes      │  │
+│        │ r/w     └──────────────────┘  │
+│  ┌─────▼──────────────┐               │
+│  │ SQLite (WAL mode)  │  ← web 專用   │
+│  │  jobs / nodes 表   │               │
+│  └────────────────────┘               │
+└────────────┬────────────────────────────┘
+     HTTP /run（帶任務資料）
+    ┌────────┴───┬──────────────┐
     ▼            ▼              ▼
 ┌────────┐  ┌────────┐  ┌────────┐
 │ node1  │  │ node2  │  │ node3  │
 │PBS/A*  │  │PBS/A*  │  │PBS/A*  │
 └───┬────┘  └───┬────┘  └───┬────┘
     └───────────┴────────────┘
-         Heartbeat (每 5s) + callback
-              ↕
-    ┌─────────────────────┐
-    │  SQLite (WAL mode)  │
-    │  jobs / nodes 表    │
-    └─────────────────────┘
+    HTTP /api/nodes/.../heartbeat（每 5s）
+    HTTP /api/jobs/.../complete（算完回傳）
+         ↑ 全部送回給 web，節點不碰 SQLite
 </pre>
     </div>
   </div>
